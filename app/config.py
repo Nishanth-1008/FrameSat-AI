@@ -1,26 +1,26 @@
-"""
-Application configuration.
-"""
-
 from pathlib import Path
-# pyrefly: ignore [missing-import]
-import torch
+import os
 
-# Project Root
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-# External RIFE Repository
+MODEL_PATH = os.getenv(
+    "MODEL_WEIGHTS_PATH",
+    str(BASE_DIR / "weights" / "rife.pth")
+)
+
+INPUT_DIR = BASE_DIR / "assets" / "sample_inputs"
+
+OUTPUT_DIR = BASE_DIR / "assets" / "sample_outputs"
+
+DEVICE = os.getenv("DEVICE", "cpu")
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+IMAGE_SIZE = (512, 512)
+
+MAX_UPLOAD_SIZE_MB = 25
+
+# Integration configurations (retained for backward compatibility)
+PROJECT_ROOT = BASE_DIR
 RIFE_ROOT = PROJECT_ROOT.parent / "Practical-RIFE"
-
-# Model Weights
 MODEL_DIR = RIFE_ROOT / "train_log"
-
-# Default inference size (Width, Height)
-IMAGE_SIZE = (448, 256)
-
-# Output directory
-OUTPUT_DIR = PROJECT_ROOT / "outputs"
-OUTPUT_DIR.mkdir(exist_ok=True)
-
-# Device
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
