@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useSystemStore } from "@/store/system";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Footer } from "@/components/layout/Footer";
@@ -20,6 +22,12 @@ const ResultViewer = dynamic(
 );
 
 export function Dashboard() {
+  const load = useSystemStore((state) => state.load);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   return (
     <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-6 bg-panel p-5 lg:flex-row">
       <Sidebar />

@@ -1,14 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
 import { LayoutDashboard, Frame, Radio, Satellite, RotateCcw } from "lucide-react";
-import { fetchSystemInfo } from "@/services/api/system";
 import { StatusChip } from "@/components/common/StatusChip";
 import { InfoCard } from "@/components/cards/InfoCard";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useUploadStore } from "@/store/useUploadStore";
 import { useResultStore } from "@/store/useResultStore";
+import { useSystemStore } from "@/store/system";
+import { Colors, Animation } from "@/lib/theme";
 import clsx from "clsx";
 
 const NAV_ITEMS = [
@@ -22,20 +22,17 @@ export function Sidebar() {
   const clearAll = useUploadStore((s) => s.clearAll);
   const clearResult = useResultStore((s) => s.clearResult);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["system-info"],
-    queryFn: fetchSystemInfo,
-    staleTime: 30_000,
-    retry: 1,
-  });
+  const info = useSystemStore((s) => s.info);
+  const loading = useSystemStore((s) => s.loading);
+  const error = useSystemStore((s) => s.error);
 
-  const status = isError ? "OFFLINE" : (data?.status ?? "BUSY");
+  const status = error ? "OFFLINE" : (info?.status ?? "BUSY");
 
   return (
     <motion.aside
       initial={{ opacity: 0, x: -16 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
+      transition={{ duration: Animation.slow, ease: "easeOut" }}
       className={clsx(
         "flex h-full shrink-0 flex-col gap-6 border-4 border-paper bg-ink p-5",
         sidebarOpen ? "block w-full lg:w-[280px]" : "hidden lg:block lg:w-[92px]",
@@ -43,7 +40,7 @@ export function Sidebar() {
     >
       <div className="border-b-4 border-paper pb-4">
         <div className="flex items-center gap-2">
-          <Satellite className="text-cyan" size={sidebarOpen ? 26 : 24} />
+          <Satellite style={{ color: Colors.primary }} size={sidebarOpen ? 26 : 24} />
           {sidebarOpen && (
             <h1 className="font-display text-2xl font-black uppercase leading-none tracking-tighter">
               FrameSat AI
@@ -54,9 +51,9 @@ export function Sidebar() {
           <StatusChip
             status={status}
             label={
-              isLoading
+              loading
                 ? "CONNECTING"
-                : isError
+                : error
                   ? "BACKEND OFFLINE"
                   : "AI-CORE ACTIVE"
             }
@@ -89,14 +86,14 @@ export function Sidebar() {
 
       {sidebarOpen && (
         <div className="flex flex-col gap-3">
-          <InfoCard label="Model" value={data?.model ?? "—"} loading={isLoading} />
-          <InfoCard label="Backend" value={data?.backend ?? "—"} loading={isLoading} />
-          <InfoCard label="Device" value={data?.device ?? "—"} loading={isLoading} />
-          <InfoCard label="Version" value={data?.version ?? "—"} loading={isLoading} />
+          <InfoCard label="Model" value={info?.model ?? "—"} loading={loading} />
+          <InfoCard label="Backend" value={info?.backend ?? "—"} loading={loading} />
+          <InfoCard label="Device" value={info?.device ?? "—"} loading={loading} />
+          <InfoCard label="Version" value={info?.version ?? "—"} loading={loading} />
           <InfoCard
             label="Status"
-            value={isError ? "OFFLINE" : (data?.status ?? "—")}
-            loading={isLoading}
+            value={error ? "OFFLINE" : (info?.status ?? "—")}
+            loading={loading}
           />
         </div>
       )}

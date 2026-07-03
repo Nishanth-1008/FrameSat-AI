@@ -1,22 +1,16 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
 import { SatelliteDish, Menu } from "lucide-react";
-import { fetchSystemInfo } from "@/services/api/system";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { useSystemStore } from "@/store/system";
 
 export function Header() {
   const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
   const datasetId = useSettingsStore((s) => s.datasetId);
   const setDataset = useSettingsStore((s) => s.setDataset);
 
-  const { data } = useQuery({
-    queryKey: ["system-info"],
-    queryFn: fetchSystemInfo,
-    staleTime: 30_000,
-    retry: 1,
-  });
+  const info = useSystemStore((s) => s.info);
 
   return (
     <motion.div
@@ -38,8 +32,8 @@ export function Header() {
             Temporal Engine
           </h1>
           <p className="mt-1 font-mono text-xs text-cyan">
-            MODEL: {data?.model?.toUpperCase() ?? "PRACTICAL-RIFE"} · STATUS:{" "}
-            {data?.status ?? "READY"}
+            MODEL: {info?.model?.toUpperCase() ?? "PRACTICAL-RIFE"} · STATUS:{" "}
+            {info?.status ?? "READY"}
           </p>
         </div>
       </div>
@@ -60,7 +54,7 @@ export function Header() {
         </div>
 
         <div className="hidden items-center gap-2 border-2 border-paper px-3 py-2 font-mono text-xs uppercase text-paper sm:flex">
-          {data?.backend ?? "PyTorch"} · {data?.device ?? "CPU"}
+          {info?.backend ?? "PyTorch"} · {info?.device ?? "CPU"}
         </div>
 
         <button
