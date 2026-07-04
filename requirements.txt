@@ -19,3 +19,6 @@ gradio>=4.0
 
 # Utilities
 tqdm>=4.66
+
+# Configuration
+pydantic-settings>=2.14.2
