@@ -164,3 +164,74 @@ def test_interpolate_sevir_invalid_img_type_returns_400(sevir_api_client):
         json={"event_id": event_id, "img_type": "lght", "frame_a": 0, "frame_b": 2},
     )
     assert resp.status_code == 400
+
+
+def test_interpolate_sevir_returns_503_when_busy(sevir_fixture_root, monkeypatch, tmp_path):
+    root, catalog_path = sevir_fixture_root
+    test_provider = SEVIRProvider(catalog_path=catalog_path, data_dir=root / "data")
+    monkeypatch.setattr(sevir_routes, "_provider", test_provider)
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    monkeypatch.setattr(sevir_routes, "OUTPUT_DIR", output_dir)
+
+    app = FastAPI()
+    app.include_router(sevir_routes.router)
+    sevir_routes.register_interpolate_sevir_route(
+        app,
+        _MockInterpolationService(),
+        is_busy_getter=lambda: True,  # simulate an in-flight request
+        is_busy_setter=lambda v: None,
+        status_getter=lambda: "READY",
+    )
+    client = TestClient(app)
+    event_id = _first_event_id(client)
+
+    resp = client.post(
+        "/interpolate/sevir",
+        json={"event_id": event_id, "img_type": "vil", "frame_a": 0, "frame_b": 2},
+    )
+    assert resp.status_code == 503
+
+
+def test_interpolate_sevir_returns_500_when_service_in_error_state(
+    sevir_fixture_root, monkeypatch, tmp_path
+):
+    root, catalog_path = sevir_fixture_root
+    test_provider = SEVIRProvider(catalog_path=catalog_path, data_dir=root / "data")
+    monkeypatch.setattr(sevir_routes, "_provider", test_provider)
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    monkeypatch.setattr(sevir_routes, "OUTPUT_DIR", output_dir)
+
+    app = FastAPI()
+    app.include_router(sevir_routes.router)
+    sevir_routes.register_interpolate_sevir_route(
+        app,
+        None,  # service failed to initialize
+        is_busy_getter=lambda: False,
+        is_busy_setter=lambda v: None,
+        status_getter=lambda: "ERROR",
+    )
+    client = TestClient(app)
+    event_id = _first_event_id(client)
+
+    resp = client.post(
+        "/interpolate/sevir",
+        json={"event_id": event_id, "img_type": "vil", "frame_a": 0, "frame_b": 2},
+    )
+    assert resp.status_code == 500
+
+
+def test_interpolate_sevir_cleans_up_temp_files(sevir_api_client, monkeypatch):
+    event_id = _first_event_id(sevir_api_client)
+    resp = sevir_api_client.post(
+        "/interpolate/sevir",
+        json={"event_id": event_id, "img_type": "vil", "frame_a": 4, "frame_b": 6},
+    )
+    assert resp.status_code == 200
+    temp_dir = sevir_routes.OUTPUT_DIR / "sevir_temp"
+    # temp_a/temp_b should have been removed in the `finally` block
+    assert list(temp_dir.glob("*_a.png")) == []
+    assert list(temp_dir.glob("*_b.png")) == []

@@ -17,25 +17,17 @@ from app.config import RIFE_ROOT, MODEL_DIR
 # Allow Python to import Practical-RIFE modules
 sys.path.insert(0, str(RIFE_ROOT))
 
-try:
-    from train_log.RIFE_HDv3 import Model  # type: ignore
-    HAS_RIFE = True
-except ImportError:
-    HAS_RIFE = False
+from train_log.RIFE_HDv3 import Model  # type: ignore
 
 
 class RIFEWrapper:
-    """Loads and manages the Practical-RIFE model, with fallback stub."""
+    """Loads and manages the Practical-RIFE model."""
 
     def __init__(self):
-        if HAS_RIFE:
-            self.model = Model()
-            self.model.load_model(str(MODEL_DIR), -1)
-            self.model.eval()
-            self.model.device()
-        else:
-            print("WARNING: Practical-RIFE is not installed/available. Using stub interpolation.")
-            self.model = None
+        self.model = Model()
+        self.model.load_model(str(MODEL_DIR), -1)
+        self.model.eval()
+        self.model.device()
 
     def interpolate(
         self,
@@ -44,9 +36,9 @@ class RIFEWrapper:
         timestep: float = 0.5,
         scale: float = 1.0,
     ) -> torch.Tensor:
-        if self.model is None:
-            # Fallback stub: return the first frame directly
-            return img1
+        """
+        Generate an intermediate frame using Practical-RIFE.
+        """
 
         _, _, h, w = img1.shape
 
