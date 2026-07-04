@@ -5,7 +5,7 @@
 **Version:** 1.0.0  
 **Status:** Accepted  
 **Date:** July 2026  
-**Authors:** FrameSat AI Engineering Team
+**Authors:** Nishanth, ChatGPT Go.
 
 ---
 
