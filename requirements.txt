@@ -1,0 +1,39 @@
+# Core
+numpy>=1.26
+opencv-python>=4.10
+Pillow>=10.0
+
+# Deep Learning
+torch>=2.2
+torchvision>=0.17
+
+# Image Processing
+scikit-image>=0.22
+rasterio>=1.3
+
+# Visualization
+matplotlib>=3.8
+
+# Web UI
+gradio>=4.0
+
+# Utilities
+tqdm>=4.66
+
+# Backend API
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+
+# SEVIR data layer
+h5py>=3.10
+pandas>=2.2
+pydantic>=2.6
+
+# Testing
+pytest>=8.0
+httpx>=0.27
+
+# Optional: perceptual similarity metric (LPIPS). If unavailable, the
+# backend gracefully omits `lpips` from interpolation results.
+lpips>=0.1.4

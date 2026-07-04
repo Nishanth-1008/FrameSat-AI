@@ -1,0 +1,43 @@
+# Virtual Environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.env*.local
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build & Dependency Outputs
+dist/
+build/
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.vercel/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Project Outputs & Uploads
+outputs/
+temp_uploads/
+
+# Temporary & Generated Data
+sevir_data/
+pytest_temp/

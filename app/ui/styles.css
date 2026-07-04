@@ -1,0 +1,334 @@
+/* --------------------------------------------------
+   Google Fonts
+-------------------------------------------------- */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
+
+/* --------------------------------------------------
+   Root
+-------------------------------------------------- */
+
+:root{
+
+    --bg:#111827;
+
+    --panel:#1b2430;
+
+    --panel-light:#263241;
+
+    --border:#334155;
+
+    --primary:#00e5ff;
+
+    --success:#22c55e;
+
+    --text:#f8fafc;
+
+    --muted:#94a3b8;
+
+    --danger:#ef4444;
+
+}
+
+/* --------------------------------------------------
+   Global
+-------------------------------------------------- */
+
+body{
+
+    background:var(--bg);
+
+    font-family:Inter,sans-serif;
+
+}
+
+footer{
+
+    display:none!important;
+
+}
+
+.gradio-container{
+
+    max-width:1800px!important;
+
+    background:var(--bg)!important;
+
+    padding:20px!important;
+
+}
+
+/* --------------------------------------------------
+   Typography
+-------------------------------------------------- */
+
+h1,h2,h3,h4{
+
+    font-family:"Space Grotesk",sans-serif!important;
+
+    color:var(--text)!important;
+
+}
+
+p{
+
+    color:var(--muted)!important;
+
+}
+
+/* --------------------------------------------------
+   Sidebar
+-------------------------------------------------- */
+
+.sidebar{
+
+    background:var(--panel);
+
+    border:1px solid var(--border);
+
+    border-radius:18px;
+
+    padding:28px;
+
+    height:100%;
+
+}
+
+.sidebar h1{
+
+    font-size:30px;
+
+    margin-bottom:6px;
+
+}
+
+.sidebar .subtitle{
+
+    color:var(--primary);
+
+    font-size:13px;
+
+    letter-spacing:1px;
+
+}
+
+.status-chip{
+
+    margin-top:20px;
+
+    display:inline-flex;
+
+    align-items:center;
+
+    gap:8px;
+
+    background:#0f172a;
+
+    color:var(--success);
+
+    padding:10px 16px;
+
+    border-radius:999px;
+
+    border:1px solid #14532d;
+
+    font-size:13px;
+
+}
+
+.status-dot{
+
+    width:8px;
+
+    height:8px;
+
+    border-radius:50%;
+
+    background:var(--success);
+
+}
+
+/* --------------------------------------------------
+   Cards
+-------------------------------------------------- */
+
+.info-card{
+
+    background:var(--panel);
+
+    border:1px solid var(--border);
+
+    border-radius:14px;
+
+    padding:18px;
+
+    margin-top:14px;
+
+}
+
+.info-card .label{
+
+    display:block;
+
+    color:var(--muted);
+
+    font-size:12px;
+
+    letter-spacing:1px;
+
+    text-transform:uppercase;
+
+}
+
+.info-card .value{
+
+    display:block;
+
+    color:white;
+
+    margin-top:8px;
+
+    font-size:18px;
+
+    font-weight:700;
+
+}
+
+/* --------------------------------------------------
+   Upload Boxes
+-------------------------------------------------- */
+
+.image-container{
+
+    border-radius:18px!important;
+
+    overflow:hidden!important;
+
+}
+
+.image-frame{
+
+    border:2px dashed var(--border);
+
+    border-radius:18px;
+
+}
+
+/* --------------------------------------------------
+   Buttons
+-------------------------------------------------- */
+
+button{
+
+    border-radius:14px!important;
+
+    font-family:"Space Grotesk"!important;
+
+    font-weight:700!important;
+
+    transition:.25s!important;
+
+}
+
+button:hover{
+
+    transform:translateY(-2px);
+
+}
+
+/* --------------------------------------------------
+   Result Cards
+-------------------------------------------------- */
+
+.result-card{
+
+    background:var(--panel);
+
+    border-radius:18px;
+
+    border:1px solid var(--border);
+
+    padding:18px;
+
+}
+
+/* --------------------------------------------------
+   Bottom Stats
+-------------------------------------------------- */
+
+.stats{
+
+    display:grid;
+
+    grid-template-columns:repeat(4,1fr);
+
+    gap:18px;
+
+    margin-top:24px;
+
+}
+
+/* --------------------------------------------------
+   Scrollbar
+-------------------------------------------------- */
+
+::-webkit-scrollbar{
+
+    width:8px;
+
+}
+
+::-webkit-scrollbar-thumb{
+
+    background:#334155;
+
+    border-radius:100px;
+
+}
+
+/* ===========================
+   HEADER
+=========================== */
+
+.header{
+
+    display:flex;
+
+    justify-content:space-between;
+
+    align-items:center;
+
+    margin-bottom:30px;
+
+}
+
+.header h1{
+
+    margin:0;
+
+    font-size:38px;
+
+}
+
+.header p{
+
+    margin-top:8px;
+
+}
+
+.header-badge{
+
+    background:#1e293b;
+
+    border:1px solid #334155;
+
+    padding:12px 18px;
+
+    border-radius:999px;
+
+    color:#00e5ff;
+
+    font-weight:600;
+
+}
+
