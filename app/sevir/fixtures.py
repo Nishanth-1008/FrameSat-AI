@@ -82,7 +82,6 @@ def generate_sevir_fixture(
 
     event_ids = [f"S{year}{i:04d}" for i in range(n_events)]
     base_time = pd.Timestamp(f"{year}-06-01T12:00:00Z")
-    minute_offsets = ":".join(str(m) for m in range(-120, 125, 5))[: -0]  # noqa
     minute_offsets = ":".join(str(-120 + 5 * i) for i in range(n_frames))
 
     catalog_rows = []

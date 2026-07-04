@@ -121,6 +121,33 @@ def test_frame_preview_returns_png_url(sevir_api_client):
     assert resp.json()["preview_url"].endswith(".png")
 
 
+def test_frame_preview_invalid_img_type_returns_400(sevir_api_client):
+    event_id = _first_event_id(sevir_api_client)
+    resp = sevir_api_client.get(
+        f"/datasets/sevir/events/{event_id}/frames/5/preview", params={"img_type": "not_real"}
+    )
+    assert resp.status_code == 400
+
+
+def test_missing_data_dir_maps_to_500_not_404(sevir_fixture_root, monkeypatch, tmp_path):
+    """A missing HDF5 data dir is a server config problem, not a bad client request."""
+    root, catalog_path = sevir_fixture_root
+    broken_provider = SEVIRProvider(catalog_path=catalog_path, data_dir=root / "nonexistent")
+    monkeypatch.setattr(sevir_routes, "_provider", broken_provider)
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    monkeypatch.setattr(sevir_routes, "OUTPUT_DIR", output_dir)
+
+    app = FastAPI()
+    app.include_router(sevir_routes.router)
+    client = TestClient(app)
+
+    event_id = _first_event_id(client)
+    resp = client.get(f"/datasets/sevir/events/{event_id}/frames/0/preview", params={"img_type": "vil"})
+    assert resp.status_code == 500
+
+
 def test_interpolate_sevir_success_with_ground_truth_metrics(sevir_api_client):
     event_id = _first_event_id(sevir_api_client)
     resp = sevir_api_client.post(

@@ -47,10 +47,23 @@ class SevirInterpolateRequest(BaseModel):
 
 def _provider_error_to_http(exc: Exception) -> HTTPException:
     if isinstance(exc, (SEVIRProviderError, CatalogError)):
-        # Distinguish "not found" from other bad input for a nicer status code.
         message = str(exc)
-        if "not found" in message or "Unknown SEVIR event" in message or "No SEVIR event" in message:
+
+        # Infra/config problems (catalog or HDF5 files missing on disk) are
+        # server-side issues, not a bad request from the client.
+        if "SEVIR catalog not found" in message or "SEVIR data file not found" in message:
+            return HTTPException(status_code=500, detail=message)
+
+        # Genuine "this identifier doesn't exist" cases.
+        if (
+            "Unknown SEVIR event" in message
+            or "No SEVIR event found" in message
+            or "has no img_type" in message
+        ):
             return HTTPException(status_code=404, detail=message)
+
+        # Everything else (bad frame index, frame_a == frame_b, unparseable
+        # catalog, etc.) is a client input problem.
         return HTTPException(status_code=400, detail=message)
     return HTTPException(status_code=500, detail=f"Unexpected SEVIR error: {exc}")
 
@@ -122,6 +135,11 @@ def get_sevir_frame_preview(
     img_type: str = Query(default=SEVIR_DEFAULT_IMG_TYPE),
 ):
     """Return a single decoded SEVIR frame as a PNG, for timeline thumbnails."""
+    if img_type not in SEVIR_RASTER_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"img_type must be one of {SEVIR_RASTER_TYPES} (got {img_type!r})",
+        )
     try:
         image = _provider.get_frame_image(event_id, img_type, frame_index)
     except (SEVIRProviderError, CatalogError) as exc:

@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from PIL import Image
 
+from app.services.interpolation_service import InterpolationService
 from app.config import OUTPUT_DIR, DEVICE
 from backend_api.sevir_routes import router as sevir_router, register_interpolate_sevir_route
 
@@ -27,18 +28,12 @@ is_busy = False
 
 # Initialize the service
 try:
-    from app.services.interpolation_service import InterpolationService
     service = InterpolationService()
     status = "READY"
 except Exception as e:
-    print(f"Error initializing InterpolationService: {e}. Falling back to MockInterpolationService.")
-    class MockInterpolationService:
-        def interpolate(self, frame1_path, frame2_path, output_path):
-            import shutil
-            shutil.copyfile(frame1_path, output_path)
-            return output_path
-    service = MockInterpolationService()
-    status = "READY"
+    print(f"Error initializing InterpolationService: {e}")
+    service = None
+    status = "ERROR"
 
 # Ensure the output directory exists
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

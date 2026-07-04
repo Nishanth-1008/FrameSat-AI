@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Image from "next/image";
 import { Clock, ImageOff } from "lucide-react";
 import { useSevirStore } from "@/store/useSevirStore";
@@ -62,6 +63,17 @@ export function FramePicker() {
     setFrameB,
   } = useSevirStore();
   const { frames, isLoading } = useSevirFrames();
+
+  // Frames load asynchronously after an event/img_type is selected. Default
+  // to the first/last frame once available, rather than leaving the sliders
+  // visually at 0/max while the store's indices are still null (which kept
+  // "Generate" disabled until the user nudged a handle).
+  useEffect(() => {
+    if (frames.length === 0) return;
+    if (frameAIndex === null) setFrameA(0);
+    if (frameBIndex === null) setFrameB(frames.length - 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frames.length]);
 
   if (!selectedEvent) {
     return (
