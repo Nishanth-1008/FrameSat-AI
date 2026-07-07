@@ -518,34 +518,42 @@ FrameSat-AI/
 ├── backend/
 │   │
 │   ├── app/
-│   │
-│   ├── core/
-│   │
-│   ├── providers/
-│   │
-│   ├── models/
-│   │
-│   ├── services/
-│   │
-│   ├── api/
+│   │   ├── domain/
+│   │   │   ├── entities/
+│   │   │   ├── value_objects/
+│   │   │   ├── enums/
+│   │   │   └── interfaces/
+│   │   │
+│   │   ├── application/
+│   │   │   ├── use_cases/
+│   │   │   ├── dto/
+│   │   │   └── services/
+│   │   │
+│   │   ├── infrastructure/
+│   │   │   ├── providers/
+│   │   │   ├── models/
+│   │   │   ├── storage/
+│   │   │   ├── logging/
+│   │   │   └── persistence/
+│   │   │
+│   │   ├── presentation/
+│   │   │   ├── routes/
+│   │   │   ├── handlers/
+│   │   │   ├── schemas/
+│   │   │   └── api.py
+│   │   │
+│   │   ├── shared/
+│   │   │   ├── config/
+│   │   │   ├── exceptions/
+│   │   │   └── utils/
+│   │   │
+│   │   ├── container.py
+│   │   ├── lifespan.py
+│   │   └── main.py
 │   │
 │   ├── tests/
 │   │
-│   ├── scripts/
-│   │
-│   ├── assets/
-│   │
-│   ├── outputs/
-│   │
-│   ├── logs/
-│   │
-│   ├── weights/
-│   │
-│   ├── requirements.txt
-│   │
-│   ├── pyproject.toml
-│   │
-│   └── .env.example
+│   └── requirements.txt
 │
 ├── frontend/
 │   │
@@ -844,104 +852,65 @@ without changing interpolation.
 
 # 22. Repository Modules
 
-The backend repository consists of six primary modules.
+The backend repository is organized into five primary architectural layers and entry modules inside the `app/` directory:
 
 ---
 
-## app/
+## domain/
 
-Contains:
-- Configuration
-- Startup
-- Dependency Injection
-- Application bootstrap
-
----
-
-## api/
-
-Contains:
-- Routes
-- Schemas
-- Response models
-- Versioning
-No AI code.
+Contains core business logic:
+- `entities/`: Domain models (e.g., base entity, frame, dataset).
+- `value_objects/`: Immutable data objects.
+- `enums/`: Standard domain enums.
+- `interfaces/`: Core model and provider interfaces (establishing dependency inversion).
 
 ---
 
-## providers/
+## application/
 
-Contains
-
-Every supported dataset.
-
-Each provider implements
-
-```
-DataProvider
-```
-
-interface.
+Coordinates execution flow:
+- `use_cases/`: Encapsulated business workflow/use cases.
+- `dto/`: Data Transfer Objects for passing data across layers.
+- `services/`: Orchestration services that call domain models and infrastructure.
 
 ---
 
-## services/
+## infrastructure/
 
-Contains
-
-Application orchestration.
-
-Example
-
-```
-InterpolationService
-
-DatasetService
-
-ExportService
-```
-
-Services coordinate work.
+Implements technical details and interfaces:
+- `providers/`: Datasets and external data providers.
+- `models/`: Wrappers for deep learning/AI interpolation models.
+- `storage/`: Local and cloud file storage adapters.
+- `logging/`: Application logger configuration.
+- `persistence/`: Database or cache storage mapping.
 
 ---
 
-## models/
+## presentation/
 
-Contains
-
-AI wrappers.
-
-Example
-
-```
-RIFE
-
-FILM
-
-Optical Flow
-```
-
-No business logic.
+Exposes functionality to clients:
+- `routes/`: FastAPI API endpoints/routers.
+- `handlers/`: Exception and error handlers.
+- `schemas/`: Request and response validation schemas (Pydantic models).
+- `api.py`: Core API router configuration.
 
 ---
 
-## core/
+## shared/
 
-Contains
+Common utilities and components:
+- `config/`: Application settings and environment configuration.
+- `exceptions/`: Cross-layer exception definitions.
+- `utils/`: Reusable helper utilities.
 
-Shared computational modules.
+---
 
-Validator
+## Entry Points
 
-Preprocessor
-
-Metrics
-
-Utilities
-
-Logger
-
-Configuration
+Application bootstrap files:
+- `container.py`: Composition root and dependency injector.
+- `lifespan.py`: Startup and shutdown hooks.
+- `main.py`: FastAPI application entrypoint.
 
 ---
 
@@ -1347,52 +1316,73 @@ No layer skips another.
 
 ```text
 backend/
-app/
 │
-├── api/
-│   ├── routes/
-│   ├── schemas/
-│   ├── dependencies.py
-│   └── exceptions.py
+├── app/
+│   ├── domain/
+│   │   ├── entities/
+│   │   │   ├── base_entity.py
+│   │   │   ├── dataset.py
+│   │   │   ├── frame.py
+│   │   │   ├── frame_pair.py
+│   │   │   ├── frame_sequence.py
+│   │   │   ├── interpolation_result.py
+│   │   │   └── provider.py
+│   │   ├── value_objects/
+│   │   │   ├── dimensions.py
+│   │   │   ├── metadata.py
+│   │   │   └── timestamp.py
+│   │   ├── enums/
+│   │   │   ├── dataset_type.py
+│   │   │   ├── device_type.py
+│   │   │   ├── image_format.py
+│   │   │   ├── model_type.py
+│   │   │   └── provider_type.py
+│   │   └── interfaces/
+│   │       ├── models/
+│   │       │   └── interpolation_model.py
+│   │       └── providers/
+│   │           └── data_provider.py
+│   │
+│   ├── application/
+│   │   ├── use_cases/
+│   │   ├── dto/
+│   │   └── services/
+│   │
+│   ├── infrastructure/
+│   │   ├── providers/
+│   │   ├── models/
+│   │   ├── storage/
+│   │   ├── logging/
+│   │   │   └── logger.py
+│   │   └── persistence/
+│   │
+│   ├── presentation/
+│   │   ├── routes/
+│   │   │   ├── health.py
+│   │   │   ├── root.py
+│   │   │   └── system.py
+│   │   ├── handlers/
+│   │   │   └── exceptions.py
+│   │   ├── schemas/
+│   │   └── api.py
+│   │
+│   ├── shared/
+│   │   ├── config/
+│   │   │   └── settings.py
+│   │   ├── exceptions/
+│   │   │   ├── base.py
+│   │   │   ├── configuration.py
+│   │   │   ├── domain.py
+│   │   │   ├── inference.py
+│   │   │   └── provider.py
+│   │   └── utils/
+│   │
+│   ├── container.py
+│   ├── lifespan.py
+│   └── main.py
 │
-├── core/
-│   ├── config.py
-│   ├── logger.py
-│   ├── validator.py
-│   ├── preprocessor.py
-│   ├── postprocessor.py
-│   ├── metrics.py
-│   ├── cache.py
-│   └── utils.py
-│
-├── providers/
-│   ├── base_provider.py
-│   ├── upload_provider.py
-│   ├── sevir_provider.py
-│   ├── registry.py
-│   └── factory.py
-│
-├── models/
-│   ├── base_model.py
-│   ├── rife_wrapper.py
-│   ├── optical_flow.py
-│   └── registry.py
-│
-├── services/
-│   ├── interpolation_service.py
-│   ├── dataset_service.py
-│   ├── export_service.py
-│   ├── metrics_service.py
-│   ├── health_service.py
-│   └── system_service.py
-│
-├── storage/
-│   ├── datasets.py
-│   ├── outputs.py
-│   └── cache.py
-│
-├── main.py
-└── lifespan.py
+├── tests/
+└── requirements.txt
 ```
 
 ---
