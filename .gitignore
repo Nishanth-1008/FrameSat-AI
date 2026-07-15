@@ -1,28 +1,46 @@
 # Virtual Environment
 .venv/
 venv/
+env/
 
-# Python
+# Python Cache
 __pycache__/
 *.py[cod]
-*.pyo
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+*.cache/
 
-# IDE
+# IDE & Editor Files
 .vscode/
 .idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
 
-# Environment
+# Environment Variables
 .env
 .env*.local
 
-# Logs
-*.log
+# Model Weights
+weights/*
+!weights/.gitkeep
 
-# OS
+# Project Outputs & Temp Uploads
+outputs/
+temp_uploads/
+assets/sample_outputs/*
+!assets/sample_outputs/.gitkeep
+
+# OS Files
 .DS_Store
 Thumbs.db
 
-# Build & Dependency Outputs
+# Build & Frontend Outputs
 dist/
 build/
 node_modules/
@@ -31,9 +49,5 @@ out/
 *.tsbuildinfo
 .vercel/
 
-# Jupyter
+# Jupyter Notebooks
 .ipynb_checkpoints/
-
-# Project Outputs & Uploads
-outputs/
-temp_uploads/

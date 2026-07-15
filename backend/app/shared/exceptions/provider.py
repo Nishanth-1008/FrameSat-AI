@@ -10,7 +10,7 @@ class ProviderError(FrameSatError):
         self,
         message: str,
     ) -> None:
-        super().DomainValidationError(
+        super().__init__(
             message,
             code="PROVIDER_ERROR",
         )

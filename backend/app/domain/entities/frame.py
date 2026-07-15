@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from app.domain.entities.base_entity import BaseEntity
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from uuid import UUID, uuid4
 
 from app.domain.value_objects.metadata import Metadata
 from app.domain.enums.provider_type import ProviderType
 from app.domain.enums.dataset_type import DatasetType
 from app.domain.value_objects.timestamp import Timestamp
 from app.domain.value_objects.dimensions import Dimensions
+
 
 @dataclass(slots=True)
 class Frame(BaseEntity):

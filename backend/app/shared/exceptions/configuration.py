@@ -10,7 +10,7 @@ class ConfigurationError(FrameSatError):
         self,
         message: str,
     ) -> None:
-        super().DomainValidationError(
+        super().__init__(
             message,
             code="CONFIGURATION_ERROR",
         )

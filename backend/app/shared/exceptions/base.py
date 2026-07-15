@@ -14,7 +14,7 @@ class FrameSatError(Exception):
     ) -> None:
         self.message = message
         self.code = code
-        super().DomainValidationError(message)
+        super().__init__(message)
 
     def __str__(self) -> str:
         return f"[{self.code}] {self.message}"

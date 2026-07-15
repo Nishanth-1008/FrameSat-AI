@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
-from uuid import UUID, uuid4
 
 from app.domain.entities.frame import Frame
 from app.domain.entities.frame_pair import FramePair
 from app.domain.entities.base_entity import BaseEntity
 from app.shared.exceptions.domain import DomainValidationError
+
 
 @dataclass(slots=True)
 class FrameSequence(BaseEntity):
@@ -16,7 +16,6 @@ class FrameSequence(BaseEntity):
     """
 
     frames: list[Frame]
-
 
     def __post_init__(self) -> None:
         self._validate()
@@ -32,9 +31,7 @@ class FrameSequence(BaseEntity):
         for previous, current in zip(self.frames, self.frames[1:]):
 
             if previous.timestamp.value > current.timestamp.value:
-                raise DomainValidationError(
-                    "Frames must be ordered chronologically."
-                )
+                raise DomainValidationError("Frames must be ordered chronologically.")
 
         for frame in self.frames:
 
@@ -47,10 +44,7 @@ class FrameSequence(BaseEntity):
             if frame.resolution != first.resolution:
                 raise DomainValidationError("Resolution mismatch.")
 
-            if (
-                frame.metadata.channels
-                != first.metadata.channels
-            ):
+            if frame.metadata.channels != first.metadata.channels:
                 raise DomainValidationError("Channel mismatch.")
 
     @property
@@ -75,10 +69,7 @@ class FrameSequence(BaseEntity):
 
     @property
     def duration(self) -> timedelta:
-        return (
-            self.end_time.value
-            - self.start_time.value
-        )
+        return self.end_time.value - self.start_time.value
 
     @property
     def length(self) -> int:
@@ -107,10 +98,7 @@ class FrameSequence(BaseEntity):
         BC
         CD
         """
-        return [
-            FramePair(a, b)
-            for a, b in zip(self.frames, self.frames[1:])
-        ]
+        return [FramePair(a, b) for a, b in zip(self.frames, self.frames[1:])]
 
     def __len__(self) -> int:
         return len(self.frames)

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from app.shared.exceptions.domain import DomainValidationError
 
+
 @dataclass(frozen=True, slots=True)
 class Timestamp:
     """
@@ -23,8 +24,12 @@ class Timestamp:
 
     @classmethod
     def from_iso(cls, value: str) -> "Timestamp":
-        """Create a Timestamp from an ISO-8601 string."""
-        return cls(datetime.fromisoformat(value))
+        try:
+            dt = datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError(f"Invalid ISO-8601 timestamp: {value}") from exc
+
+        return cls(dt)
 
     def to_iso(self) -> str:
         """Return the timestamp as an ISO-8601 string."""

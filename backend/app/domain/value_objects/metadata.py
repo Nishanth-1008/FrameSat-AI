@@ -8,6 +8,7 @@ from app.domain.enums.provider_type import ProviderType
 from app.domain.enums.dataset_type import DatasetType
 from app.shared.exceptions.domain import DomainValidationError
 
+
 @dataclass(frozen=True, slots=True)
 class Metadata:
     """

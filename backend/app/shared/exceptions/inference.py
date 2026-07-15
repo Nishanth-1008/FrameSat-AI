@@ -10,7 +10,7 @@ class InferenceError(FrameSatError):
         self,
         message: str,
     ) -> None:
-        super().DomainValidationError(
+        super().__init__(
             message,
             code="INFERENCE_ERROR",
         )

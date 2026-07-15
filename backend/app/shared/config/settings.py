@@ -1,14 +1,14 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
 # pyrefly: ignore [missing-import]
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
+from app.config import AppConfig
 
 
-class Settings(BaseSettings):
+class Settings(AppConfig):
     """
-    Global application configuration.
+    Global application configuration extending the core AppConfig.
     """
 
     APP_NAME: str = "FrameSat AI"
@@ -18,18 +18,13 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    DEVICE: str = "cpu"
-
-    OUTPUT_DIR: Path = Path("outputs")
     TEMP_DIR: Path = Path("temp")
-
-    LOG_LEVEL: str = "INFO"
-
     MODEL_NAME: str = "RIFE"
 
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,
+        extra="ignore",
     )
 
 
