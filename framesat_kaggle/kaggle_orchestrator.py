@@ -128,7 +128,7 @@ class KaggleOrchestrator:
         # 2. Weights directory verification
         required_files = [
             "flownet.pkl", "IFNet_HDv3.py", "RIFE_HDv3.py", 
-            "refine.py", "warplayer.py"
+            "refine.py"
         ]
         print(f"Verifying weights directory: {self.weights_dir}")
         for file in required_files:
