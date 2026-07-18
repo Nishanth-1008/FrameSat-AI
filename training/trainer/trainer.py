@@ -9,7 +9,7 @@ import random
 import glob
 import numpy as np
 import torch
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
@@ -120,7 +120,7 @@ class Trainer:
             self.scheduler = None
         
         self.use_amp = torch.cuda.is_available() and config.get("use_amp", True)
-        self.scaler = GradScaler(enabled=self.use_amp)
+        self.scaler = GradScaler("cuda", enabled=self.use_amp)
         
         self.start_epoch = 0
         self.best_psnr = 0.0
@@ -212,7 +212,7 @@ class Trainer:
             
             self.optimizer.zero_grad()
             
-            with autocast(enabled=self.use_amp):
+            with autocast("cuda", enabled=self.use_amp):
                 flow, mask, merged = self.model(imgs, timestep=0.5, scale_list=scale_list)
                 pred = merged[-1]
                 loss, loss_l1, loss_ssim = self.criterion(pred, t1_p)
@@ -261,7 +261,7 @@ class Trainer:
                 
                 imgs = torch.cat((t0_p, t2_p), dim=1)
                 
-                with autocast(enabled=self.use_amp):
+                with autocast("cuda", enabled=self.use_amp):
                     flow, mask, merged = self.model(imgs, timestep=0.5, scale_list=[16, 8, 4, 2, 1])
                     pred_p = merged[-1]
                     loss, _, _ = self.criterion(pred_p, t1_p)
