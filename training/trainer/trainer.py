@@ -9,6 +9,7 @@ import random
 import glob
 import numpy as np
 import torch
+from tqdm import tqdm
 from torch.amp import autocast, GradScaler
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
@@ -198,7 +199,8 @@ class Trainer:
         self.model.train()
         total_loss = 0.0
         
-        for batch_idx, (t0, t1, t2) in enumerate(self.train_loader):
+        pbar = tqdm(self.train_loader, desc=f"Train Epoch {epoch}", leave=False)
+        for batch_idx, (t0, t1, t2) in enumerate(pbar):
             t0 = torch.cat([t0, t0, t0], dim=1).to(self.device)
             t1 = torch.cat([t1, t1, t1], dim=1).to(self.device)
             t2 = torch.cat([t2, t2, t2], dim=1).to(self.device)
@@ -232,11 +234,10 @@ class Trainer:
             total_loss += loss.item()
             
             if batch_idx % self.config.get("log_interval", 10) == 0:
-                print(f"Train Epoch: {epoch} [{batch_idx}/{len(self.train_loader)}] Loss: {loss.item():.4f} (L1: {loss_l1.item():.4f}, SSIM: {loss_ssim.item():.4f})")
-                
+                postfix = {"Loss": f"{loss.item():.4f}", "L1": f"{loss_l1.item():.4f}", "SSIM": f"{loss_ssim.item():.4f}"}
                 if torch.cuda.is_available():
-                    mem_alloc = torch.cuda.max_memory_allocated() / (1024 ** 2)
-                    print(f"GPU Max Memory Allocated: {mem_alloc:.2f} MB")
+                    postfix["VRAM"] = f"{torch.cuda.max_memory_allocated() / (1024 ** 2):.0f}MB"
+                pbar.set_postfix(postfix)
                 
         avg_loss = total_loss / len(self.train_loader)
         self.writer.add_scalar('Loss/train', avg_loss, epoch)
@@ -250,7 +251,8 @@ class Trainer:
         all_psnr, all_ssim, all_fsim, all_mse, all_mae = [], [], [], [], []
         
         with torch.no_grad():
-            for batch_idx, (t0, t1, t2) in enumerate(self.val_loader):
+            val_pbar = tqdm(self.val_loader, desc=f"Val Epoch {epoch}", leave=False)
+            for batch_idx, (t0, t1, t2) in enumerate(val_pbar):
                 t0_tensor = torch.cat([t0, t0, t0], dim=1).to(self.device)
                 t1_tensor = torch.cat([t1, t1, t1], dim=1).to(self.device)
                 t2_tensor = torch.cat([t2, t2, t2], dim=1).to(self.device)
