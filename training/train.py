@@ -16,8 +16,8 @@ def set_seed(seed=42):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(current_dir))
@@ -210,9 +210,22 @@ def main():
         print(f"Subset mode active: using {len(train_dataset)} train / {len(val_dataset)} val triplets.")
     
     batch_size = config.get("batch_size", 1)
-    num_workers = config.get("num_workers", 0)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    num_workers = config.get("num_workers", 2)
+    use_pin = torch.cuda.is_available()
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=batch_size, 
+        shuffle=True, 
+        num_workers=num_workers,
+        pin_memory=use_pin
+    )
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers,
+        pin_memory=use_pin
+    )
     
     print(f"Train Dataset: {len(train_dataset)} triplets")
     print(f"Val Dataset: {len(val_dataset)} triplets")

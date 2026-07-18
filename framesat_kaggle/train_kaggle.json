@@ -5,6 +5,7 @@
     "pretrained_weights": "weights/rife_426/train_log",
     "epochs": 10,
     "batch_size": 4,
+    "num_workers": 2,
     "learning_rate": 1e-4,
     "loss_alpha": 0.5,
     "use_amp": true,
