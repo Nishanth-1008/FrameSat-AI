@@ -8,10 +8,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+pytest_tmp/
+pytest_tmp~/
 .coverage
 htmlcov/
 .cache/
 *.cache/
+.ruff_cache/
 
 # IDE & Editor Files
 .vscode/
@@ -51,3 +54,24 @@ out/
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
+
+# Evaluation Framework Data & Run Outputs
+evaluation/datasets/*.h5
+
+# Generated Artifacts & Datasets
+artifacts/
+datasets/cache/
+datasets/quarantine/
+datasets/metadata/*.db
+backend/datasets/smoke_cache/
+*.zip
+*.log
+evaluation/datasets/
+*.h5
+*.nc
+*.zarr
+checkpoints/
+outputs/
+logs/
+
+evaluation/datasets/*

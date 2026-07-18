@@ -3,9 +3,9 @@ import urllib.request
 import h5py
 import numpy as np
 
-class SEVIRDataset:
+class SatelliteDataset:
     """
-    Handles downloading and loading SEVIR HDF5 datasets for evaluation.
+    Handles downloading and loading satellite HDF5 datasets for evaluation.
     """
     
     # Pre-defined URLs for testing small sample files
@@ -32,7 +32,7 @@ class SEVIRDataset:
         self.num_events = 0
 
     def download_if_needed(self):
-        """Downloads the SEVIR HDF5 file if it doesn't exist locally."""
+        """Downloads the satellite HDF5 file if it doesn't exist locally."""
         os.makedirs(self.download_dir, exist_ok=True)
         if os.path.exists(self.filepath):
             print(f"[{self.modality.upper()}] Dataset already exists at {self.filepath}")
@@ -58,7 +58,7 @@ class SEVIRDataset:
                         print(f"\r  Downloaded: {downloaded / (1024*1024):.1f}/{total_size / (1024*1024):.1f} MB ({percent:.1f}%)", end='')
             print("\nDownload complete.")
         except Exception as e:
-            print(f"\nFailed to download SEVIR sample: {e}")
+            print(f"\nFailed to download satellite sample: {e}")
             raise
 
     def load(self):
@@ -78,12 +78,6 @@ class SEVIRDataset:
         """
         Retrieves a normalized frame triplet (t0, t1, t2) from a specific event.
         
-        Args:
-            event_idx: Index of the event in the HDF5 file.
-            t0_idx: Time index for the first frame.
-            t1_idx: Time index for the target (ground truth) frame.
-            t2_idx: Time index for the second frame.
-            
         Returns:
             Tuple of (t0, t1, t2) as normalized numpy arrays in range [0, 1].
         """

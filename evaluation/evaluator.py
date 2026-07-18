@@ -3,113 +3,172 @@ import time
 import json
 import csv
 from datetime import datetime
-from .datasets import SEVIRDataset
-from .metrics import compute_psnr, compute_ssim, compute_mae
+import numpy as np
+import matplotlib.pyplot as plt
+from .datasets import SatelliteDataset
+from .metrics import compute_psnr, compute_ssim, compute_mae, compute_mse, compute_fsim
 from .visualizer import save_comparison_figure
+from .preprocessing import get_preprocessor_from_config
 
 class Evaluator:
     """
-    Orchestrates the evaluation pipeline for a given model and dataset.
-    Generates summary reports and visual outputs.
+    Represents the evaluation executor.
+    Sets up run directories, runs inference, tracks metrics and latency,
+    applies preprocessing steps, and outputs results.
     """
     
-    def __init__(self, model, dataset: SEVIRDataset, output_dir: str = "outputs", experiment_dir: str = "experiments"):
+    def __init__(self, model, dataset: SatelliteDataset, config: dict):
         self.model = model
         self.dataset = dataset
-        self.output_dir = output_dir
-        self.experiment_dir = experiment_dir
+        self.config = config
         
-        os.makedirs(self.output_dir, exist_ok=True)
-        os.makedirs(self.experiment_dir, exist_ok=True)
+        self.experiment_name = config.get("experiment_name", "experiment")
+        self.save_predictions = config.get("save_predictions", False)
+        self.num_events = config.get("events", 5)
         
-    def run(self, num_events: int = 5, save_visuals: bool = True):
+        # Setup preprocessor
+        self.preprocessor = get_preprocessor_from_config(config)
+        
+        # Setup output folders
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.run_dir = os.path.join(
+            "evaluation", "experiments", f"run_{self.timestamp}_{self.experiment_name}"
+        )
+        
+        self.visual_dir = os.path.join(self.run_dir, "visualizations")
+        self.pred_dir = os.path.join(self.run_dir, "predictions")
+        
+        os.makedirs(self.run_dir, exist_ok=True)
+        os.makedirs(self.visual_dir, exist_ok=True)
+        if self.save_predictions:
+            os.makedirs(self.pred_dir, exist_ok=True)
+            
+        # Save run config
+        with open(os.path.join(self.run_dir, "config.json"), "w") as f:
+            json.dump(config, f, indent=4)
+            
+    def run(self) -> dict:
         """
-        Run the evaluation over the specified number of events.
+        Executes the evaluation run.
         """
         self.dataset.load()
-        num_events = min(num_events, self.dataset.num_events)
+        events_to_run = min(self.num_events, self.dataset.num_events)
         
         results = []
+        log_lines = []
         
-        for idx in range(num_events):
-            print(f"\nEvaluating Event {idx+1}/{num_events}...")
+        def log_info(msg):
+            print(msg)
+            log_lines.append(f"[{datetime.now().isoformat()}] {msg}")
             
-            # Fetch triplet (using default frames 23, 24, 25 for testing dynamics)
+        log_info(f"Starting experiment: {self.experiment_name}")
+        log_info(f"Modality: {self.dataset.modality.upper()} | Events: {events_to_run}")
+        log_info(f"Preprocessor: {self.preprocessor.__class__.__name__}")
+        
+        for idx in range(events_to_run):
+            log_info(f"\n--- Event {idx+1}/{events_to_run} ---")
+            
+            # 1. Fetch raw frames (t0, gt, t2)
             t0, gt, t2 = self.dataset.get_event_triplet(idx)
             
-            # Run inference and time it
+            # 2. Apply preprocessing (CLAHE, resize, etc.)
+            t0_proc = self.preprocessor.process(t0)
+            gt_proc = self.preprocessor.process(gt)
+            t2_proc = self.preprocessor.process(t2)
+            
+            # 3. Run model inference with timing
             start_time = time.time()
-            pred = self.model.interpolate(t0, t2)
+            pred_proc = self.model.interpolate(t0_proc, t2_proc)
             inference_time = (time.time() - start_time) * 1000  # ms
             
-            # Compute metrics
-            psnr = compute_psnr(gt, pred)
-            ssim = compute_ssim(gt, pred)
-            mae = compute_mae(gt, pred)
+            # 4. Compute metrics
+            psnr = compute_psnr(gt_proc, pred_proc)
+            ssim = compute_ssim(gt_proc, pred_proc)
+            fsim = compute_fsim(gt_proc, pred_proc)
+            mse = compute_mse(gt_proc, pred_proc)
+            mae = compute_mae(gt_proc, pred_proc)
             
-            print(f"  PSNR: {psnr:.2f} dB, SSIM: {ssim:.4f}, MAE: {mae:.4f}, Time: {inference_time:.1f} ms")
+            log_info(f"  Metrics - PSNR: {psnr:.2f} dB, SSIM: {ssim:.4f}, FSIM: {fsim:.4f}, MSE: {mse:.6f}, MAE: {mae:.4f}")
+            log_info(f"  Latency - Time: {inference_time:.1f} ms")
             
             event_result = {
                 "event_index": idx,
                 "psnr": psnr,
                 "ssim": ssim,
+                "fsim": fsim,
+                "mse": mse,
                 "mae": mae,
                 "inference_time_ms": inference_time
             }
             results.append(event_result)
             
-            # Save visual
-            if save_visuals:
-                out_path = os.path.join(self.output_dir, f"{self.dataset.modality}_event_{idx}.png")
-                title = f"Event {idx} ({self.dataset.modality.upper()}) | PSNR: {psnr:.2f} | SSIM: {ssim:.4f}"
-                save_comparison_figure(t0, gt, pred, out_path, title)
+            # 5. Save visualizations
+            out_path = os.path.join(self.visual_dir, f"event_{idx}_vis.png")
+            title = f"Event {idx} ({self.dataset.modality.upper()}) | PSNR: {psnr:.2f} | SSIM: {ssim:.4f}"
+            save_comparison_figure(t0_proc, gt_proc, pred_proc, out_path, title)
+            
+            # Save individual component images as requested
+            plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_gt.png"), gt_proc, cmap='gray')
+            plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_pred.png"), pred_proc, cmap='gray')
+            diff = np.abs(gt_proc - pred_proc)
+            plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_diff.png"), diff, cmap='hot', vmin=0.0, vmax=0.2)
+            
+            # 6. Save raw predictions (numpy arrays) if configured
+            if self.save_predictions:
+                npz_path = os.path.join(self.pred_dir, f"event_{idx}_pred.npz")
+                np.savez_compressed(npz_path, t0=t0_proc, gt=gt_proc, pred=pred_proc)
                 
-        # Aggregate and save report
-        self._generate_report(results, num_events)
+        # Aggregate stats
+        avg_psnr = sum(r['psnr'] for r in results) / events_to_run
+        avg_ssim = sum(r['ssim'] for r in results) / events_to_run
+        avg_fsim = sum(r['fsim'] for r in results) / events_to_run
+        avg_mse = sum(r['mse'] for r in results) / events_to_run
+        avg_mae = sum(r['mae'] for r in results) / events_to_run
+        avg_time = sum(r['inference_time_ms'] for r in results) / events_to_run
         
-    def _generate_report(self, results: list, num_events: int):
-        avg_psnr = sum(r['psnr'] for r in results) / num_events
-        avg_ssim = sum(r['ssim'] for r in results) / num_events
-        avg_mae = sum(r['mae'] for r in results) / num_events
-        avg_time = sum(r['inference_time_ms'] for r in results) / num_events
+        summary = {
+            "avg_psnr": avg_psnr,
+            "avg_ssim": avg_ssim,
+            "avg_fsim": avg_fsim,
+            "avg_mse": avg_mse,
+            "avg_mae": avg_mae,
+            "avg_inference_time_ms": avg_time
+        }
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         report = {
-            "timestamp": timestamp,
+            "timestamp": self.timestamp,
+            "experiment_name": self.experiment_name,
             "modality": self.dataset.modality,
             "model_type": self.model.__class__.__name__,
-            "num_events": num_events,
-            "summary": {
-                "avg_psnr": avg_psnr,
-                "avg_ssim": avg_ssim,
-                "avg_mae": avg_mae,
-                "avg_inference_time_ms": avg_time
-            },
+            "num_events": events_to_run,
+            "config": self.config,
+            "summary": summary,
             "details": results
         }
         
-        # Save JSON
-        json_path = os.path.join(self.experiment_dir, f"report_{timestamp}.json")
-        with open(json_path, 'w') as f:
+        # Save metrics file
+        with open(os.path.join(self.run_dir, "metrics.json"), "w") as f:
             json.dump(report, f, indent=4)
             
-        # Append to master CSV
-        csv_path = os.path.join(self.experiment_dir, "experiments_summary.csv")
+        # Write logs
+        with open(os.path.join(self.run_dir, "run.log"), "w") as f:
+            f.write("\n".join(log_lines))
+            
+        # Append to main CSV
+        csv_path = os.path.join("evaluation", "experiments", "experiments_summary.csv")
         file_exists = os.path.isfile(csv_path)
         with open(csv_path, 'a', newline='') as f:
             writer = csv.writer(f)
             if not file_exists:
-                writer.writerow(["Timestamp", "Model", "Modality", "Events", "Avg_PSNR", "Avg_SSIM", "Avg_MAE", "Avg_Time_ms"])
+                writer.writerow(["Timestamp", "Experiment", "Model", "Modality", "Events", "Avg_PSNR", "Avg_SSIM", "Avg_FSIM", "Avg_MSE", "Avg_MAE", "Avg_Time_ms"])
             writer.writerow([
-                timestamp, self.model.__class__.__name__, self.dataset.modality, 
-                num_events, f"{avg_psnr:.4f}", f"{avg_ssim:.4f}", f"{avg_mae:.4f}", f"{avg_time:.1f}"
+                self.timestamp, self.experiment_name, self.model.__class__.__name__, self.dataset.modality, 
+                events_to_run, f"{avg_psnr:.4f}", f"{avg_ssim:.4f}", f"{avg_fsim:.4f}", f"{avg_mse:.6f}", f"{avg_mae:.4f}", f"{avg_time:.1f}"
             ])
             
-        print("\n================ EVALUATION SUMMARY ================")
-        print(f"Modality: {self.dataset.modality.upper()} | Model: {self.model.__class__.__name__}")
-        print(f"Average PSNR: {avg_psnr:.2f} dB")
-        print(f"Average SSIM: {avg_ssim:.4f}")
-        print(f"Average MAE:  {avg_mae:.4f}")
-        print(f"Average Time: {avg_time:.1f} ms/frame")
-        print(f"Report saved to: {json_path}")
-        print("====================================================")
+        log_info("\n================ RUN FINISHED ================")
+        log_info(f"Avg PSNR: {avg_psnr:.2f} dB | Avg SSIM: {avg_ssim:.4f} | Avg FSIM: {avg_fsim:.4f} | Avg MSE: {avg_mse:.6f} | Avg MAE: {avg_mae:.4f}")
+        log_info(f"Saved run report to: {self.run_dir}")
+        log_info("==============================================")
+        
+        return report

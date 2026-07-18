@@ -1,0 +1,7 @@
+{
+    "experiment_name": "vis_baseline",
+    "model": "rife",
+    "modality": "vis",
+    "events": 2,
+    "save_predictions": true
+}

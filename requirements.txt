@@ -13,6 +13,8 @@ rasterio>=1.3
 xarray>=2024.2.0
 tifffile>=2024.2.12
 h5py>=3.11.0
+h5netcdf>=1.3.0
+boto3>=1.34.0
 
 # Visualization
 matplotlib>=3.8

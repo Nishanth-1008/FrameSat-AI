@@ -1,0 +1,8 @@
+{
+    "experiment_name": "vis_rife_425",
+    "model": "rife",
+    "modality": "vis",
+    "events": 5,
+    "weights": "weights/rife_425/train_log",
+    "save_predictions": true
+}

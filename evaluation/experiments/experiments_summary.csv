@@ -1,3 +1,0 @@
-Timestamp,Model,Modality,Events,Avg_PSNR,Avg_SSIM,Avg_MAE,Avg_Time_ms
-20260715_122502,RIFEInterpolator,vis,5,25.0656,0.3985,0.0463,1360.0
-20260715_123220,RIFEInterpolator,vis,5,24.8808,0.3762,0.0482,1108.5

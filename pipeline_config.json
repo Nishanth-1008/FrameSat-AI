@@ -1,0 +1,15 @@
+{
+  "satellite": "GOES19",
+  "sector": "CONUS",
+  "channel": 13,
+  "target_scene_count": 1000,
+  "workers": 8,
+  "resume": true,
+  "verify": true,
+  "run_qa": true,
+  "cache_dir": "datasets/cache/goes19_cache",
+  "quarantine_dir": "datasets/quarantine/goes19_quarantine",
+  "reports_dir": "artifacts/reports/qa",
+  "db_path": "datasets/metadata/metadata.db",
+  "start_date": "2024-10-10T21:00:00"
+}

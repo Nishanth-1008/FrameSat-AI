@@ -1,0 +1,11 @@
+{
+    "experiment_name": "vis_clahe",
+    "model": "rife",
+    "modality": "vis",
+    "events": 2,
+    "save_predictions": true,
+    "clahe": {
+        "clip_limit": 2.0,
+        "tile_grid_size": [8, 8]
+    }
+}

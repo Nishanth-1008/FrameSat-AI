@@ -1,0 +1,11 @@
+{
+    "experiment_name": "vis_resize_384",
+    "model": "rife",
+    "modality": "vis",
+    "events": 2,
+    "save_predictions": true,
+    "resize": {
+        "height": 384,
+        "width": 384
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "experiment_name": "kaggle_rife426_finetune",
+    "dataset_path": "datasets/cache/goes19_cache",
+    "quarantine_dir": "datasets/quarantine/goes19_quarantine",
+    "pretrained_weights": "weights/rife_426/train_log",
+    "epochs": 10,
+    "batch_size": 4,
+    "learning_rate": 1e-4,
+    "loss_alpha": 0.5,
+    "use_amp": true,
+    "resume": false,
+    "resume_checkpoint": "",
+    "log_interval": 50,
+    "save_visual_interval": 1,
+    "lr_scheduler": "cosine",
+    "early_stopping_patience": 5,
+    "seed": 42,
+    "train_resize": [384, 384],
+    "start_date": "2024-10-10T21:00:00",
+    "end_date": "2024-10-14T09:00:00"
+}
