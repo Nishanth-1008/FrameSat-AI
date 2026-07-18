@@ -5,6 +5,7 @@ import csv
 from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 from .datasets import SatelliteDataset
 from .metrics import compute_psnr, compute_ssim, compute_mae, compute_mse, compute_fsim
 from .visualizer import save_comparison_figure
@@ -65,8 +66,13 @@ class Evaluator:
         log_info(f"Modality: {self.dataset.modality.upper()} | Events: {events_to_run}")
         log_info(f"Preprocessor: {self.preprocessor.__class__.__name__}")
         
-        for idx in range(events_to_run):
-            log_info(f"\n--- Event {idx+1}/{events_to_run} ---")
+        eval_pbar = tqdm(
+            range(events_to_run),
+            desc="Evaluating Events",
+            bar_format="{desc}: {percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {postfix}",
+            ascii=" ░▒▓█"
+        )
+        for idx in eval_pbar:
             
             # 1. Fetch raw frames (t0, gt, t2)
             t0, gt, t2 = self.dataset.get_event_triplet(idx)
@@ -112,6 +118,10 @@ class Evaluator:
             plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_pred.png"), pred_proc, cmap='gray')
             diff = np.abs(gt_proc - pred_proc)
             plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_diff.png"), diff, cmap='hot', vmin=0.0, vmax=0.2)
+            eval_pbar.set_postfix({
+                "PSNR": f"{psnr:.2f}dB",
+                "SSIM": f"{ssim:.4f}"
+            })
             
             # 6. Save raw predictions (numpy arrays) if configured
             if self.save_predictions:

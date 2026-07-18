@@ -7,8 +7,21 @@ import datetime
 import subprocess
 import torch
 import platform
+import tarfile
 
 class KaggleOrchestrator:
+    def _print_header(self, title):
+        CYAN = "\033[36m"
+        BOLD = "\033[1m"
+        RESET = "\033[0m"
+        width = 65
+        padding = (width - len(title) - 2) // 2
+        p_left = " " * padding
+        p_right = " " * (width - len(title) - 2 - padding)
+        print(f"\n{CYAN}┌{'─' * (width - 2)}┐{RESET}")
+        print(f"{CYAN}│{BOLD}{p_left}{title}{p_right}{CYAN}│{RESET}")
+        print(f"{CYAN}└{'─' * (width - 2)}┘{RESET}")
+
     def __init__(self):
         self.bundle_path = None
         self.dataset_path = None
@@ -26,20 +39,18 @@ class KaggleOrchestrator:
         self.git_commit = "N/A"
         
     def setup_environment(self):
-        print("=================================================")
-        print(" FrameSat-AI Orchestrator: Setting up Environment")
-        print("=================================================")
+        self._print_header("FrameSat-AI Orchestrator: Setting up Environment")
         
         # GPU detection
         if torch.cuda.is_available():
             self.gpu_model = torch.cuda.get_device_name(0)
             self.cuda_version = torch.version.cuda
-            print(f"[OK] CUDA Available: {self.gpu_model} (CUDA {self.cuda_version})")
+            print(f"\033[32m✔\033[0m CUDA Available: \033[1;32m{self.gpu_model}\033[0m (CUDA {self.cuda_version})")
         else:
-            print("[WARN] CUDA NOT available. Training will run on CPU.")
+            print("\033[33m⚠\033[0m CUDA NOT available. Training will run on CPU.")
             
-        print(f"PyTorch Version: {self.pytorch_version}")
-        print(f"Python Version: {platform.python_version()}")
+        print(f"PyTorch Version: \033[36m{self.pytorch_version}\033[0m")
+        print(f"Python Version:  \033[36m{platform.python_version()}\033[0m")
         return {
             "gpu": self.gpu_model,
             "pytorch": self.pytorch_version,
@@ -48,9 +59,7 @@ class KaggleOrchestrator:
         }
 
     def discover_resources(self):
-        print("\n=================================================")
-        print(" FrameSat-AI Orchestrator: Resource Discovery")
-        print("=================================================")
+        self._print_header("FrameSat-AI Orchestrator: Resource Discovery")
         
         # Find bundle path
         for root, dirs, files in os.walk("/kaggle/input"):
@@ -63,7 +72,7 @@ class KaggleOrchestrator:
                 
         if not self.bundle_path:
             raise RuntimeError("FrameSat-AI source code bundle not found.")
-        print(f"[OK] Source Bundle Found: {self.bundle_path}")
+        print(f"\033[32m✔\033[0m Source Bundle Found: \033[34m{self.bundle_path}\033[0m")
         
         # Find dataset path
         for root, dirs, files in os.walk("/kaggle/input"):
@@ -72,7 +81,7 @@ class KaggleOrchestrator:
                 break
         if not self.dataset_path:
             raise RuntimeError("GOES-19 dataset path not found.")
-        print(f"[OK] Dataset Path Found: {self.dataset_path}")
+        print(f"\033[32m✔\033[0m Dataset Path Found:  \033[34m{self.dataset_path}\033[0m")
         
         # Resolve sub-paths
         self.cache_dir = os.path.join(self.dataset_path, "cache")
@@ -106,13 +115,11 @@ class KaggleOrchestrator:
                     self.rife_version = version_raw
                 break
                 
-        print(f"Resolved RIFE version: {self.rife_version}")
-        print(f"Git Commit Hash: {self.git_commit}")
+        print(f"\033[32m✔\033[0m Resolved RIFE version: \033[36m{self.rife_version}\033[0m")
+        print(f"\033[32m✔\033[0m Git Commit Hash:      \033[36m{self.git_commit}\033[0m")
 
     def validate_environment(self):
-        print("\n=================================================")
-        print(" FrameSat-AI Orchestrator: Validations")
-        print("=================================================")
+        self._print_header("FrameSat-AI Orchestrator: Validations")
         
         validation_failed = False
         
@@ -120,10 +127,10 @@ class KaggleOrchestrator:
         nc_files = glob.glob(os.path.join(self.cache_dir, "*.nc"))
         print(f"Scenes found in cache: {len(nc_files)}")
         if len(nc_files) < 3:
-            print(f"[FAIL] Insufficient NetCDF scenes ({len(nc_files)}) for triplets.")
+            print(f"\033[31m✘\033[0m Insufficient NetCDF scenes ({len(nc_files)}) for triplets.")
             validation_failed = True
         else:
-            print("[PASS] Dataset Cache verified.")
+            print("\033[32m✔\033[0m Dataset Cache verified.")
             
         # 2. Weights directory verification
         required_files = [
@@ -134,22 +141,22 @@ class KaggleOrchestrator:
         for file in required_files:
             file_path = os.path.join(self.weights_dir, file)
             if not os.path.exists(file_path):
-                print(f"[FAIL] Required weight/model file missing: {file}")
+                print(f"\033[31m✘\033[0m Required weight/model file missing: {file}")
                 validation_failed = True
             else:
-                print(f"[PASS] File verified: {file}")
+                print(f"\033[32m✔\033[0m File verified: {file}")
                 
         # 3. Disk space check
         _, _, free = shutil.disk_usage("/kaggle/working")
         free_gb = free / (1024 ** 3)
         print(f"Free disk space: {free_gb:.2f} GB")
         if free_gb < 5.0:
-            print("[FAIL] Insufficient disk space in /kaggle/working.")
+            print("\033[31m✘\033[0m Insufficient disk space in /kaggle/working.")
             validation_failed = True
             
         if validation_failed:
             raise RuntimeError("Environment verification failed. Aborting training run.")
-        print("[OK] All pre-flight validations passed.")
+        print("\033[32m✔\033[0m All pre-flight validations passed.")
 
     def resolve_runtime_config(self):
         print("\n=================================================")
@@ -185,7 +192,7 @@ class KaggleOrchestrator:
                     resume_checkpoint = latest_pth
                     
         if resume_checkpoint:
-            print(f"[INFO] Auto-Resume detected! Resuming from: {resume_checkpoint}")
+            print(f"\033[34mℹ\033[0m Auto-Resume detected! Resuming from: \033[32m{resume_checkpoint}\033[0m")
             config["resume"] = True
             config["resume_checkpoint"] = resume_checkpoint
         else:
@@ -215,29 +222,41 @@ class KaggleOrchestrator:
         with open(self.manifest_path, "w") as f:
             json.dump(manifest, f, indent=4)
             
-        # Print Manifest
-        print("=================================================")
-        print("FrameSat AI Runtime Manifest")
-        print("=================================================")
-        print(f"GPU:\n  {self.gpu_model}")
-        print(f"PyTorch:\n  {self.pytorch_version}")
-        print(f"CUDA:\n  {self.cuda_version}")
-        print(f"Project:\n  {self.bundle_path}")
-        print(f"Dataset:\n  {self.cache_dir}")
-        print(f"Metadata:\n  {self.metadata_db}")
-        print(f"Weights:\n  {self.weights_dir}")
-        print(f"Output:\n  {output_base_dir}")
-        print("=================================================")
+        # Print Manifest Table
+        BOLD = "\033[1m"
+        RESET = "\033[0m"
+        CYAN = "\033[36m"
+        
+        print(f"\n{CYAN}┌──────────────────────┬────────────────────────────────────────────────────────┐{RESET}")
+        print(f"{CYAN}│{BOLD} Key                  {RESET}{CYAN}│{BOLD} Value                                                  {RESET}{CYAN}│{RESET}")
+        print(f"{CYAN}├──────────────────────┼────────────────────────────────────────────────────────┤{RESET}")
+        
+        manifest_items = [
+            ("GPU", self.gpu_model),
+            ("PyTorch", self.pytorch_version),
+            ("CUDA", self.cuda_version),
+            ("Project Path", self.bundle_path),
+            ("Dataset Path", self.cache_dir),
+            ("Metadata Path", self.metadata_db),
+            ("Pretrained Weights", self.weights_dir),
+            ("Output Path", output_base_dir)
+        ]
+        
+        for key, val in manifest_items:
+            val_str = str(val)
+            if len(val_str) > 54:
+                val_str = val_str[:51] + "..."
+            print(f"{CYAN}│{RESET} {key:<20} {CYAN}│{RESET} {val_str:<54} {CYAN}│{RESET}")
+            
+        print(f"{CYAN}└──────────────────────┴────────────────────────────────────────────────────────┘{RESET}\n")
         
         return config
 
     def launch_training(self):
-        print("\n=================================================")
-        print(" FrameSat-AI Orchestrator: Training Launch")
-        print("=================================================")
+        self._print_header("FrameSat-AI Orchestrator: Training Launch")
         
         train_script = os.path.join(self.bundle_path, "training", "train.py")
-        print(f"Executing: python {train_script} --config {self.resolved_config_path}")
+        print(f"\033[34mℹ\033[0m Executing pipeline script: \033[1;36m{train_script}\033[0m")
         
         if self.bundle_path not in sys.path:
             sys.path.insert(0, self.bundle_path)
@@ -246,34 +265,37 @@ class KaggleOrchestrator:
         
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         
-        # Stream logs in real-time
-        for line in process.stdout:
-            print(line, end="")
+        # Stream logs character by character to allow tqdm progress bars to overwrite dynamically
+        while True:
+            char = process.stdout.read(1)
+            if not char:
+                break
+            sys.stdout.write(char)
+            sys.stdout.flush()
+            
         process.wait()
         
         if process.returncode != 0:
             raise RuntimeError(f"Training pipeline crashed with exit code: {process.returncode}")
-        print("[OK] Training execution succeeded.")
+        print("\033[32m✔\033[0m Training execution succeeded.")
 
     def evaluate(self):
-        print("\n=================================================")
-        print(" FrameSat-AI Orchestrator: Post-Training Evaluation")
-        print("=================================================")
+        self._print_header("FrameSat-AI Orchestrator: Post-Training Evaluation")
         
         # Locate the run results
         runs_dir = "/kaggle/working/outputs/runs"
         all_runs = sorted(glob.glob(os.path.join(runs_dir, "run_*")))
         if not all_runs:
-            print("[WARN] No runs folder found under outputs. Skipping evaluation.")
+            print("\033[33m⚠\033[0m No runs folder found under outputs. Skipping evaluation.")
             return
             
         latest_run = all_runs[-1]
         best_checkpoint = os.path.join(latest_run, "best.pth")
         if not os.path.exists(best_checkpoint):
-            print(f"[WARN] No best checkpoint found at {best_checkpoint}. Skipping evaluation.")
+            print(f"\033[33m⚠\033[0m No best checkpoint found at {best_checkpoint}. Skipping evaluation.")
             return
             
-        print(f"Found best checkpoint for evaluation: {best_checkpoint}")
+        print(f"\033[32m✔\033[0m Found best checkpoint for evaluation: \033[36m{best_checkpoint}\033[0m")
         
         # Generate eval config
         eval_config = {
@@ -343,12 +365,10 @@ evaluator.run()
             f.write(eval_script)
             
         subprocess.check_call([sys.executable, eval_run_path])
-        print("[OK] Scientific evaluation complete.")
+        print("\033[32m✔\033[0m Scientific evaluation complete.")
 
     def package_outputs(self):
-        print("\n=================================================")
-        print(" FrameSat-AI Orchestrator: Exporting Artifacts")
-        print("=================================================")
+        self._print_header("FrameSat-AI Orchestrator: Exporting Artifacts")
         
         export_root = "/kaggle/working/experiment_001"
         os.makedirs(export_root, exist_ok=True)
@@ -403,11 +423,11 @@ evaluator.run()
             
         # Create tar file
         tar_path = "/kaggle/working/experiment_001.tar.gz"
-        print(f"Compressing export directory into: {tar_path}")
+        print(f"\033[34mℹ\033[0m Compressing export directory into: \033[36m{tar_path}\033[0m")
         with tarfile.open(tar_path, "w:gz") as tar:
             tar.add(export_root, arcname="experiment_001")
             
-        print(f"[OK] Pack complete. Tar file created: {tar_path}")
+        print(f"\033[32m✔\033[0m Pack complete. Tar file created: \033[32m{tar_path}\033[0m")
         
         # Read final metrics if available
         epochs = "N/A"
@@ -439,13 +459,27 @@ evaluator.run()
                     pass
                     
         # Print Notebook summary
-        print("\n=================================================")
-        print("Training Complete")
-        print("=================================================")
-        print(f"Epochs:\n  {epochs}")
-        print(f"Best PSNR:\n  {best_psnr}")
-        print(f"Best SSIM:\n  {best_ssim}")
-        print(f"Output:\n  {export_root}")
-        print(f"Checkpoint:\n  {os.path.join(checkpoints_dir, 'best.pth')}")
-        print(f"Evaluation:\n  {os.path.join(eval_dir, 'training_report.md')}")
-        print("=================================================")
+        BOLD = "\033[1m"
+        RESET = "\033[0m"
+        GREEN = "\033[32m"
+        
+        print(f"\n{GREEN}┌──────────────────────┬────────────────────────────────────────────────────────┐{RESET}")
+        print(f"{GREEN}│{BOLD} Metric / Asset       {RESET}{GREEN}│{BOLD} Details                                                 {RESET}{GREEN}│{RESET}")
+        print(f"{GREEN}├──────────────────────┼────────────────────────────────────────────────────────┤{RESET}")
+        
+        summary_items = [
+            ("Epochs Completed", epochs),
+            ("Best PSNR", f"{best_psnr} dB" if best_psnr != "N/A" else "N/A"),
+            ("Best SSIM", best_ssim),
+            ("Export Path", export_root),
+            ("Best Checkpoint", os.path.join(checkpoints_dir, 'best.pth')),
+            ("Evaluation Report", os.path.join(eval_dir, 'training_report.md'))
+        ]
+        
+        for key, val in summary_items:
+            val_str = str(val)
+            if len(val_str) > 54:
+                val_str = val_str[:51] + "..."
+            print(f"{GREEN}│{RESET} {key:<20} {GREEN}│{RESET} {val_str:<54} {GREEN}│{RESET}")
+            
+        print(f"{GREEN}└──────────────────────┴────────────────────────────────────────────────────────┘{RESET}\n")

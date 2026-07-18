@@ -199,7 +199,13 @@ class Trainer:
         self.model.train()
         total_loss = 0.0
         
-        pbar = tqdm(self.train_loader, desc=f"Train Epoch {epoch}", leave=False)
+        pbar = tqdm(
+            self.train_loader,
+            desc=f"Train Epoch {epoch}",
+            bar_format="{desc}: {percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {postfix}",
+            ascii=" ░▒▓█",
+            leave=False
+        )
         for batch_idx, (t0, t1, t2) in enumerate(pbar):
             t0 = torch.cat([t0, t0, t0], dim=1).to(self.device)
             t1 = torch.cat([t1, t1, t1], dim=1).to(self.device)
@@ -251,7 +257,13 @@ class Trainer:
         all_psnr, all_ssim, all_fsim, all_mse, all_mae = [], [], [], [], []
         
         with torch.no_grad():
-            val_pbar = tqdm(self.val_loader, desc=f"Val Epoch {epoch}", leave=False)
+            val_pbar = tqdm(
+                self.val_loader,
+                desc=f"Val Epoch {epoch}",
+                bar_format="{desc}: {percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {postfix}",
+                ascii=" ░▒▓█",
+                leave=False
+            )
             for batch_idx, (t0, t1, t2) in enumerate(val_pbar):
                 t0_tensor = torch.cat([t0, t0, t0], dim=1).to(self.device)
                 t1_tensor = torch.cat([t1, t1, t1], dim=1).to(self.device)
@@ -304,6 +316,10 @@ class Trainer:
                         plt.imsave(diff_save_path, diff, cmap='hot', vmin=0.0, vmax=0.2)
                         
                 sample_count += bs
+                val_pbar.set_postfix({
+                    "Loss": f"{loss.item():.4f}", 
+                    "Avg PSNR": f"{np.mean(all_psnr):.2f}dB" if all_psnr else "N/A"
+                })
                     
         metrics = {
             "val_loss": total_loss / len(self.val_loader),
