@@ -147,31 +147,42 @@ class Trainer:
         for mod in list(sys.modules.keys()):
             if mod.startswith("IFNet") or mod.startswith("train_log") or mod.startswith("model"):
                 del sys.modules[mod]
-                
-        train_log_dir = os.path.abspath(os.path.join(current_dir, "..", "..", path))
-        version_dir = os.path.dirname(train_log_dir)
+
+        # `path` is already the final, absolute train_log directory — no re-joining.
+        train_log_dir = os.path.abspath(path)
         rife_src_dir = os.path.abspath(os.path.join(current_dir, "..", "..", "evaluation", "models", "rife_src"))
-        
+
+        print(f"Resolved pretrained weight directory: {train_log_dir}")
+        weight_file = os.path.join(train_log_dir, "flownet.pkl")
+        print(f"Resolved weight file: {weight_file}")
+
+        if not os.path.exists(weight_file):
+            raise FileNotFoundError(
+                "Pretrained weights not found.\n"
+                f"  Configured pretrained_weights : {path}\n"
+                f"  Resolved directory            : {train_log_dir}\n"
+                f"  Expected weight file          : {weight_file}\n"
+                f"  Directory exists              : {os.path.isdir(train_log_dir)}\n"
+                f"  Weight file exists            : False"
+            )
+
         sys.path.insert(0, rife_src_dir)
         sys.path.insert(0, train_log_dir)
-        sys.path.insert(0, version_dir)
-        
+
         try:
             from train_log.IFNet_HDv3 import IFNet
             model = IFNet()
-            weight_file = os.path.join(train_log_dir, 'flownet.pkl')
-            if os.path.exists(weight_file):
-                state_dict = torch.load(weight_file, map_location='cpu')
-                clean_state = {k.replace("module.", ""): v for k, v in state_dict.items()}
-                model.load_state_dict(clean_state, strict=False)
-                print(f"Loaded pretrained weights from {weight_file}")
-            else:
-                raise FileNotFoundError(f"Abort training: Pretrained weights not found at {weight_file}")
+            state_dict = torch.load(weight_file, map_location="cpu")
+            clean_state = {k.replace("module.", ""): v for k, v in state_dict.items()}
+            model.load_state_dict(clean_state, strict=False)
+            print(f"Loaded pretrained weights from {weight_file}")
             return model
         finally:
-            if version_dir in sys.path: sys.path.remove(version_dir)
-            if train_log_dir in sys.path: sys.path.remove(train_log_dir)
-            if rife_src_dir in sys.path: sys.path.remove(rife_src_dir)
+            if train_log_dir in sys.path:
+                sys.path.remove(train_log_dir)
+            if rife_src_dir in sys.path:
+                sys.path.remove(rife_src_dir)
+
 
     def _pad(self, tensor):
         _, _, h, w = tensor.shape
@@ -467,7 +478,10 @@ class Trainer:
         os.makedirs(temp_dir, exist_ok=True)
         
         try:
-            src_weights_dir = os.path.abspath(os.path.join(current_dir, "..", "evaluation", "weights", "rife_426", "train_log"))
+            # Source .py model files from the same pretrained_weights directory used for training.
+            # This is already an absolute path — no joining required.
+            src_weights_dir = os.path.abspath(self.config.get("pretrained_weights", ""))
+
             import shutil
             if os.path.exists(src_weights_dir):
                 for item in os.listdir(src_weights_dir):

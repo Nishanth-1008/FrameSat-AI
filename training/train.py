@@ -146,12 +146,24 @@ def main():
         print("Abort training: zero triplets found!")
         sys.exit(1)
         
-    # Check for missing weights
+    # Check for missing weights.
+    # pretrained_weights must be the final, absolute path to the train_log directory.
+    # The notebook (or caller) is responsible for resolving this to an absolute path before
+    # writing the config.  train.py consumes it directly — no path rewriting.
     pretrained_weights = config.get("pretrained_weights", "")
-    train_log_dir = os.path.abspath(os.path.join(current_dir, "..", pretrained_weights))
-    weight_file = os.path.join(train_log_dir, 'flownet.pkl')
+    train_log_dir = os.path.abspath(pretrained_weights)
+    weight_file = os.path.join(train_log_dir, "flownet.pkl")
+
+    print(f"Resolved pretrained weight directory: {train_log_dir}")
+    print(f"Resolved weight file: {weight_file}")
+
     if not os.path.exists(weight_file):
-        print(f"Abort training: Pretrained weights not found at {weight_file}")
+        print("Abort training: pretrained weights not found.")
+        print(f"  Configured pretrained_weights : {pretrained_weights}")
+        print(f"  Resolved directory            : {train_log_dir}")
+        print(f"  Expected weight file          : {weight_file}")
+        print(f"  Directory exists              : {os.path.isdir(train_log_dir)}")
+        print(f"  Weight file exists            : False")
         sys.exit(1)
         
     # Load GOES-19 Dataset
