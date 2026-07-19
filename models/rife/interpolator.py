@@ -10,9 +10,21 @@ class RIFEInterpolator(BaseInterpolator):
     Handles padding requirements and single-channel mapping automatically.
     """
     
-    def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def __init__(self, device=None):
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(device)
         self.model = None
+
+    def to(self, device):
+        self.device = torch.device(device)
+        if self.model is not None:
+            if hasattr(self.model, 'to'):
+                self.model.to(self.device)
+            elif hasattr(self.model, 'flownet'):
+                self.model.flownet.to(self.device)
+        return self
 
     def load_weights(self, path: str):
         """

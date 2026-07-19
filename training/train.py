@@ -211,7 +211,7 @@ def main():
     
     batch_size = config.get("batch_size", 1)
     num_workers = config.get("num_workers", 2)
-    use_pin = torch.cuda.is_available()
+    use_pin = config.get("device", "cuda" if torch.cuda.is_available() else "cpu") == "cuda"
     train_loader = DataLoader(
         train_dataset, 
         batch_size=batch_size, 

@@ -46,7 +46,7 @@ class Trainer:
         self.config = config
         self.train_loader = train_loader
         self.val_loader = val_loader
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(config.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
         
         self.epochs = config.get("epochs", 10)
         self.lr = config.get("learning_rate", 1e-4)
@@ -110,6 +110,10 @@ class Trainer:
         self.model = self._load_model(self.weights_path)
         self.model.to(self.device)
         
+        if self.device.type == "cuda":
+            assert next(self.model.parameters()).is_cuda, "Model failed to move to CUDA! Silent CPU fallback detected."
+
+        
         self.criterion = CombinedLoss(alpha=self.alpha)
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=1e-4)
         
@@ -120,7 +124,7 @@ class Trainer:
         else:
             self.scheduler = None
         
-        self.use_amp = torch.cuda.is_available() and config.get("use_amp", True)
+        self.use_amp = (self.device.type == "cuda") and config.get("use_amp", True)
         self.scaler = GradScaler("cuda", enabled=self.use_amp)
         
         self.start_epoch = 0
