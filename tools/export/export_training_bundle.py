@@ -32,8 +32,12 @@ def create_bundle():
     else:
         print("Warning: RIFE 4.26 weights not found. You may need to download them first.")
         
-    print("Copying kaggle/ setup scripts...")
-    shutil.copytree(os.path.join(project_root, "kaggle"), os.path.join(bundle_name, "kaggle"))
+    print("Copying models/ package...")
+    shutil.copytree(os.path.join(project_root, "models"), os.path.join(bundle_name, "models"),
+                    ignore=shutil.ignore_patterns("cache", "checkpoints", "weights", "__pycache__"))
+        
+    print("Copying framesat_kaggle/ setup scripts...")
+    shutil.copytree(os.path.join(project_root, "framesat_kaggle"), os.path.join(bundle_name, "framesat_kaggle"))
     
     print(f"Zipping {bundle_name} to {zip_name}...")
     shutil.make_archive(os.path.join(project_root, "kaggle_bundle"), 'zip', bundle_name)

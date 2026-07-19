@@ -1,4 +1,6 @@
 import os
+os.environ["USE_LIBUV"] = "0"
+os.environ["NCCL_SOCKET_IFNAME"] = "lo"
 import sys
 import json
 import argparse
@@ -7,8 +9,9 @@ import glob
 from datetime import datetime
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
 import xarray as xr
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
 
 def set_seed(seed=42):
     random.seed(seed)
@@ -18,6 +21,8 @@ def set_seed(seed=42):
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.deterministic = False
         torch.backends.cudnn.benchmark = True
+        if hasattr(torch, 'set_float32_matmul_precision'):
+            torch.set_float32_matmul_precision('high')
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(current_dir))
@@ -33,6 +38,27 @@ def main():
     config_path = os.path.join(current_dir, args.config)
     with open(config_path, 'r') as f:
         config = json.load(f)
+        
+    is_distributed = "RANK" in os.environ and "WORLD_SIZE" in os.environ
+    if is_distributed:
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        rank = int(os.environ.get("RANK", 0))
+        world_size = int(os.environ.get("WORLD_SIZE", 1))
+        torch.cuda.set_device(local_rank)
+        backend = "gloo" if os.name == "nt" else "nccl"
+        dist.init_process_group(backend=backend, init_method="env://")
+        config["device"] = f"cuda:{local_rank}"
+        config["is_distributed"] = True
+        config["local_rank"] = local_rank
+        config["rank"] = rank
+        config["world_size"] = world_size
+        
+        # Silence outputs on other ranks to prevent duplicate logs
+        if rank != 0:
+            import builtins
+            builtins.print = lambda *args, **kwargs: None
+    else:
+        config["is_distributed"] = False
         
     set_seed(config.get("seed", 42))
     
@@ -209,29 +235,55 @@ def main():
         val_dataset = Subset(val_dataset, val_indices)
         print(f"Subset mode active: using {len(train_dataset)} train / {len(val_dataset)} val triplets.")
     
+    # Distributed Samplers
+    if config.get("is_distributed", False):
+        train_sampler = DistributedSampler(train_dataset, num_replicas=config["world_size"], rank=config["rank"], shuffle=True)
+        val_sampler = DistributedSampler(val_dataset, num_replicas=config["world_size"], rank=config["rank"], shuffle=False)
+    else:
+        train_sampler = None
+        val_sampler = None
+
     batch_size = config.get("batch_size", 1)
+    if not config.get("is_distributed", False) and torch.cuda.is_available() and torch.cuda.device_count() > 1:
+        batch_size = batch_size * torch.cuda.device_count()
+        print(f"Auto-scaling batch size to {batch_size} for {torch.cuda.device_count()} GPUs (DP mode).")
+        
     num_workers = config.get("num_workers", 2)
-    use_pin = config.get("device", "cuda" if torch.cuda.is_available() else "cpu") == "cuda"
+    use_pin = config.get("device", "cuda" if torch.cuda.is_available() else "cpu").startswith("cuda")
+    
+    # We must import DataLoader here if not imported globally
+    from torch.utils.data import DataLoader
+    
     train_loader = DataLoader(
         train_dataset, 
         batch_size=batch_size, 
-        shuffle=True, 
+        shuffle=(train_sampler is None), 
+        sampler=train_sampler,
         num_workers=num_workers,
-        pin_memory=use_pin
+        pin_memory=use_pin,
+        prefetch_factor=4 if num_workers > 0 else None,
+        persistent_workers=True if num_workers > 0 else False
     )
     val_loader = DataLoader(
         val_dataset, 
         batch_size=batch_size, 
         shuffle=False, 
+        sampler=val_sampler,
         num_workers=num_workers,
-        pin_memory=use_pin
+        pin_memory=use_pin,
+        prefetch_factor=4 if num_workers > 0 else None,
+        persistent_workers=True if num_workers > 0 else False
     )
     
     print(f"Train Dataset: {len(train_dataset)} triplets")
     print(f"Val Dataset: {len(val_dataset)} triplets")
     
-    trainer = Trainer(config, train_loader, val_loader)
+    trainer = Trainer(config, train_loader, val_loader, train_sampler=train_sampler)
     trainer.train()
+    
+    if config.get("is_distributed", False):
+        dist.destroy_process_group()
+
 
 if __name__ == "__main__":
     main()

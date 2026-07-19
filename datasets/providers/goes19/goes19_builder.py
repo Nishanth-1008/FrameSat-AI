@@ -99,6 +99,15 @@ class GOES19TripletDataset(Dataset):
         self.downloader = GOES19Downloader(cache_dir=cache_dir, product=product, channel=channel)
         self.train_resize = train_resize
         
+        # Check if the cache directory is read-only or in /kaggle/input and resolve a writable tensor cache path
+        is_readonly = not os.access(cache_dir, os.W_OK) or "/kaggle/input" in cache_dir
+        if is_readonly:
+            self.tensor_cache_dir = "/kaggle/working/goes19_tensor_cache"
+        else:
+            self.tensor_cache_dir = cache_dir
+        os.makedirs(self.tensor_cache_dir, exist_ok=True)
+        
+        
         # 1. Download/Collect files
         self.files = self.downloader.download_range(start_date, end_date)
         
@@ -169,7 +178,17 @@ class GOES19TripletDataset(Dataset):
         return len(self.triplet_indices)
         
     def _process_file(self, file_path):
-        """Opens NetCDF, extracts Radiance, converts to BT, and normalizes."""
+        """Opens NetCDF, extracts Radiance, converts to BT, and normalizes. Caches result."""
+        base_name = os.path.basename(file_path)
+        resize_str = f"_{self.train_resize[0]}x{self.train_resize[1]}" if self.train_resize else ""
+        cache_tensor_path = os.path.join(self.tensor_cache_dir, base_name.replace('.nc', f'{resize_str}.pt'))
+        
+        if os.path.exists(cache_tensor_path):
+            try:
+                return torch.load(cache_tensor_path)
+            except Exception:
+                pass # Fallback to re-processing if corrupted
+                
         with xr.open_dataset(file_path, engine='h5netcdf') as ds:
             rad = ds['Rad'].values
             
@@ -196,6 +215,12 @@ class GOES19TripletDataset(Dataset):
             
             if self.train_resize is not None:
                 tensor = F_t.resize(tensor, self.train_resize, antialias=True)
+                
+            # Save to cache
+            try:
+                torch.save(tensor, cache_tensor_path)
+            except Exception as e:
+                print(f"Warning: Failed to cache tensor {cache_tensor_path}: {e}")
                 
             return tensor
             

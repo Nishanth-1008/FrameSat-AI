@@ -27,6 +27,8 @@ class TeeLogger:
 
     def write(self, message):
         self.terminal.write(message)
+        if '\r' in message:
+            return
         self.log.write(message)
         self.log.flush()
 
@@ -42,10 +44,11 @@ def get_git_commit_hash():
         return "unknown"
 
 class Trainer:
-    def __init__(self, config, train_loader, val_loader):
+    def __init__(self, config, train_loader, val_loader, train_sampler=None):
         self.config = config
         self.train_loader = train_loader
         self.val_loader = val_loader
+        self.train_sampler = train_sampler
         self.device = torch.device(config.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
         
         self.epochs = config.get("epochs", 10)
@@ -56,11 +59,15 @@ class Trainer:
         self.lr_scheduler_type = config.get("lr_scheduler", "cosine")
         
         # Resolve Experiment ID and output folder
-        is_kaggle = 'KAGGLE_KERNEL_RUN_TYPE' in os.environ or os.path.exists('/kaggle')
-        if is_kaggle:
-            runs_dir = "/kaggle/working/artifacts/training/runs"
+        config_out = self.config.get("output_dir")
+        if config_out:
+            runs_dir = os.path.join(config_out, "runs")
         else:
-            runs_dir = os.path.abspath(os.path.join(current_dir, "runs"))
+            is_kaggle = 'KAGGLE_KERNEL_RUN_TYPE' in os.environ or os.path.exists('/kaggle')
+            if is_kaggle:
+                runs_dir = "/kaggle/working/artifacts/training/runs"
+            else:
+                runs_dir = os.path.abspath(os.path.join(current_dir, "runs"))
         os.makedirs(runs_dir, exist_ok=True)
         
         if config.get("resume", False):
@@ -95,23 +102,42 @@ class Trainer:
         self.sample_predictions_dir = os.path.join(self.output_dir, "sample_predictions")
         os.makedirs(self.sample_predictions_dir, exist_ok=True)
         
-        # Setup Tee Logger
-        log_file = os.path.join(self.output_dir, "training.log")
-        sys.stdout = TeeLogger(log_file, sys.stdout)
-        sys.stderr = TeeLogger(log_file, sys.stderr)
+        is_rank0 = not self.config.get("is_distributed", False) or self.config.get("rank", 0) == 0
         
+        # Setup Tee Logger (Only on Rank 0)
+        if is_rank0:
+            log_file = os.path.join(self.output_dir, "training.log")
+            sys.stdout = TeeLogger(log_file, sys.stdout)
+            sys.stderr = TeeLogger(log_file, sys.stderr)
+            
         self.git_commit = get_git_commit_hash()
         self.config["git_commit"] = self.git_commit
-        with open(os.path.join(self.output_dir, "config.json"), "w") as f:
-            json.dump(self.config, f, indent=4)
-            
-        self.writer = SummaryWriter(log_dir=os.path.join(self.output_dir, "tensorboard"))
+        
+        if is_rank0:
+            with open(os.path.join(self.output_dir, "config.json"), "w") as f:
+                json.dump(self.config, f, indent=4)
+            self.writer = SummaryWriter(log_dir=os.path.join(self.output_dir, "tensorboard"))
+        else:
+            class MockSummaryWriter:
+                def __init__(self, *args, **kwargs): pass
+                def add_scalar(self, *args, **kwargs): pass
+                def add_image(self, *args, **kwargs): pass
+                def close(self): pass
+            self.writer = MockSummaryWriter()
         
         self.model = self._load_model(self.weights_path)
         self.model.to(self.device)
         
         if self.device.type == "cuda":
             assert next(self.model.parameters()).is_cuda, "Model failed to move to CUDA! Silent CPU fallback detected."
+            if self.config.get("is_distributed", False):
+                from torch.nn.parallel import DistributedDataParallel as DDP
+                local_rank = self.config.get("local_rank", 0)
+                print(f"Wrapping model in DistributedDataParallel (local_rank: {local_rank})")
+                self.model = DDP(self.model, device_ids=[local_rank])
+            elif torch.cuda.device_count() > 1:
+                print(f"Pushing limits: Wrapping model in DataParallel for {torch.cuda.device_count()} GPUs!")
+                self.model = torch.nn.DataParallel(self.model)
 
         
         self.criterion = CombinedLoss(alpha=self.alpha)
@@ -200,20 +226,36 @@ class Trainer:
         return tensor, 0, 0
         
     def train_epoch(self, epoch):
+        if self.config.get("is_distributed", False) and self.train_sampler is not None:
+            self.train_sampler.set_epoch(epoch)
+            
         self.model.train()
         total_loss = 0.0
+        total_batches = len(self.train_loader)
+        log_interval = self.config.get("log_interval", 10)
         
-        pbar = tqdm(
-            self.train_loader,
-            desc=f"Train Epoch {epoch}",
-            bar_format="{desc}: {percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {postfix}",
-            ascii=" ░▒▓█",
-            leave=False
-        )
-        for batch_idx, (t0, t1, t2) in enumerate(pbar):
-            t0 = torch.cat([t0, t0, t0], dim=1).to(self.device)
-            t1 = torch.cat([t1, t1, t1], dim=1).to(self.device)
-            t2 = torch.cat([t2, t2, t2], dim=1).to(self.device)
+        use_tqdm = self.config.get("use_tqdm", False) and sys.stdout.isatty()
+        
+        if use_tqdm:
+            pbar = tqdm(
+                self.train_loader,
+                desc=f"Train Epoch {epoch}",
+                bar_format="{desc}: {percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {postfix}",
+                ascii=" ░▒▓█",
+                leave=False
+            )
+            loader = pbar
+        else:
+            loader = self.train_loader
+            print(f"\n--- Epoch {epoch}/{self.epochs} Training ---")
+        
+        accumulation_steps = self.config.get("accumulation_steps", 1)
+        self.optimizer.zero_grad(set_to_none=True)
+        
+        for batch_idx, (t0, t1, t2) in enumerate(loader):
+            t0 = torch.cat([t0, t0, t0], dim=1).to(self.device, non_blocking=True)
+            t1 = torch.cat([t1, t1, t1], dim=1).to(self.device, non_blocking=True)
+            t2 = torch.cat([t2, t2, t2], dim=1).to(self.device, non_blocking=True)
             
             t0_p, pad_h, pad_w = self._pad(t0)
             t1_p, _, _ = self._pad(t1)
@@ -222,33 +264,45 @@ class Trainer:
             imgs = torch.cat((t0_p, t2_p), dim=1)
             scale_list = [16, 8, 4, 2, 1]
             
-            self.optimizer.zero_grad()
-            
             with autocast("cuda", enabled=self.use_amp):
                 flow, mask, merged = self.model(imgs, timestep=0.5, scale_list=scale_list)
                 pred = merged[-1]
                 loss, loss_l1, loss_ssim = self.criterion(pred, t1_p)
+                # Scale loss to support gradient accumulation
+                loss = loss / accumulation_steps
                 
             if torch.isnan(loss) or torch.isinf(loss):
                 raise ValueError(f"NaN/Inf loss detected at epoch {epoch}, batch {batch_idx}")
                 
             self.scaler.scale(loss).backward()
             
-            # Gradient clipping
-            self.scaler.unscale_(self.optimizer)
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.get("grad_clip", 1.0))
-            
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            
-            total_loss += loss.item()
-            
-            if batch_idx % self.config.get("log_interval", 10) == 0:
-                postfix = {"Loss": f"{loss.item():.4f}", "L1": f"{loss_l1.item():.4f}", "SSIM": f"{loss_ssim.item():.4f}"}
-                if torch.cuda.is_available():
-                    postfix["VRAM"] = f"{torch.cuda.max_memory_allocated() / (1024 ** 2):.0f}MB"
-                pbar.set_postfix(postfix)
+            # Step only after accumulating gradients
+            if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == total_batches:
+                # Gradient clipping
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.get("grad_clip", 1.0))
                 
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                self.optimizer.zero_grad(set_to_none=True)
+            
+            total_loss += (loss.item() * accumulation_steps)
+            
+            if use_tqdm:
+                if batch_idx % log_interval == 0:
+                    postfix = {"Loss": f"{loss.item():.4f}", "L1": f"{loss_l1.item():.4f}", "SSIM": f"{loss_ssim.item():.4f}"}
+                    if torch.cuda.is_available():
+                        postfix["VRAM"] = f"{torch.cuda.max_memory_allocated() / (1024 ** 2):.0f}MB"
+                    pbar.set_postfix(postfix)
+            else:
+                if batch_idx % log_interval == 0 or batch_idx == total_batches - 1:
+                    pct = (batch_idx + 1) / total_batches * 100
+                    bar_len = 15
+                    filled_len = int(bar_len * (batch_idx + 1) // total_batches)
+                    bar = '█' * filled_len + '░' * (bar_len - filled_len)
+                    vram_str = f" | VRAM: {torch.cuda.max_memory_allocated() / (1024 ** 2):.0f}MB" if torch.cuda.is_available() else ""
+                    print(f"Batch {batch_idx+1:03d}/{total_batches:03d} [{bar}] {pct:3.0f}% | Loss: {loss.item():.4f} (L1: {loss_l1.item():.4f}, SSIM: {loss_ssim.item():.4f}){vram_str}")
+                    
         avg_loss = total_loss / len(self.train_loader)
         self.writer.add_scalar('Loss/train', avg_loss, epoch)
         return avg_loss
@@ -257,10 +311,14 @@ class Trainer:
         self.model.eval()
         total_loss = 0.0
         sample_count = 0
+        total_batches = len(self.val_loader)
+        log_interval = self.config.get("log_interval", 10)
         
         all_psnr, all_ssim, all_fsim, all_mse, all_mae = [], [], [], [], []
         
-        with torch.no_grad():
+        use_tqdm = self.config.get("use_tqdm", False) and sys.stdout.isatty()
+        
+        if use_tqdm:
             val_pbar = tqdm(
                 self.val_loader,
                 desc=f"Val Epoch {epoch}",
@@ -268,10 +326,16 @@ class Trainer:
                 ascii=" ░▒▓█",
                 leave=False
             )
-            for batch_idx, (t0, t1, t2) in enumerate(val_pbar):
-                t0_tensor = torch.cat([t0, t0, t0], dim=1).to(self.device)
-                t1_tensor = torch.cat([t1, t1, t1], dim=1).to(self.device)
-                t2_tensor = torch.cat([t2, t2, t2], dim=1).to(self.device)
+            loader = val_pbar
+        else:
+            loader = self.val_loader
+            print(f"--- Epoch {epoch}/{self.epochs} Validation ---")
+            
+        with torch.no_grad():
+            for batch_idx, (t0, t1, t2) in enumerate(loader):
+                t0_tensor = torch.cat([t0, t0, t0], dim=1).to(self.device, non_blocking=True)
+                t1_tensor = torch.cat([t1, t1, t1], dim=1).to(self.device, non_blocking=True)
+                t2_tensor = torch.cat([t2, t2, t2], dim=1).to(self.device, non_blocking=True)
                 
                 t0_p, pad_h, pad_w = self._pad(t0_tensor)
                 t1_p, _, _ = self._pad(t1_tensor)
@@ -320,10 +384,18 @@ class Trainer:
                         plt.imsave(diff_save_path, diff, cmap='hot', vmin=0.0, vmax=0.2)
                         
                 sample_count += bs
-                val_pbar.set_postfix({
-                    "Loss": f"{loss.item():.4f}", 
-                    "Avg PSNR": f"{np.mean(all_psnr):.2f}dB" if all_psnr else "N/A"
-                })
+                if use_tqdm:
+                    val_pbar.set_postfix({
+                        "Loss": f"{loss.item():.4f}", 
+                        "Avg PSNR": f"{np.mean(all_psnr):.2f}dB" if all_psnr else "N/A"
+                    })
+                else:
+                    if batch_idx % log_interval == 0 or batch_idx == total_batches - 1:
+                        pct = (batch_idx + 1) / total_batches * 100
+                        bar_len = 15
+                        filled_len = int(bar_len * (batch_idx + 1) // total_batches)
+                        bar = '█' * filled_len + '░' * (bar_len - filled_len)
+                        print(f"Val Batch {batch_idx+1:03d}/{total_batches:03d} [{bar}] {pct:3.0f}% | Loss: {loss.item():.4f} | Avg PSNR: {np.mean(all_psnr):.2f}dB")
                     
         metrics = {
             "val_loss": total_loss / len(self.val_loader),
@@ -341,9 +413,13 @@ class Trainer:
         return metrics
         
     def _save_checkpoint(self, is_best, epoch):
+        if self.config.get("is_distributed", False) and self.config.get("rank", 0) != 0:
+            return
+            
+        model_state = self.model.module.state_dict() if hasattr(self.model, 'module') else self.model.state_dict()
         state = {
             'epoch': epoch,
-            'state_dict': self.model.state_dict(),
+            'state_dict': model_state,
             'optimizer': self.optimizer.state_dict(),
             'best_psnr': self.best_psnr,
             'config': self.config
@@ -364,7 +440,10 @@ class Trainer:
             
         if os.path.exists(target_path):
             state = torch.load(target_path, map_location=self.device)
-            self.model.load_state_dict(state['state_dict'])
+            if hasattr(self.model, 'module'):
+                self.model.module.load_state_dict(state['state_dict'])
+            else:
+                self.model.load_state_dict(state['state_dict'])
             self.optimizer.load_state_dict(state['optimizer'])
             self.start_epoch = state['epoch'] + 1
             self.best_psnr = state['best_psnr']
@@ -374,6 +453,9 @@ class Trainer:
                 print(f"Warning: Could not find checkpoint at {target_path} to resume from.")
             
     def _log_metrics(self, epoch, train_loss, val_metrics):
+        if self.config.get("is_distributed", False) and self.config.get("rank", 0) != 0:
+            return
+            
         metric_dict = {
             "epoch": epoch,
             "train_loss": train_loss,
@@ -392,7 +474,14 @@ class Trainer:
             writer.writerow(metric_dict)
             
     def _update_experiment_registry(self):
-        registry_path = os.path.join(current_dir, "experiments.csv")
+        if self.config.get("is_distributed", False) and self.config.get("rank", 0) != 0:
+            return
+            
+        is_kaggle = 'KAGGLE_KERNEL_RUN_TYPE' in os.environ or os.path.exists('/kaggle')
+        if is_kaggle:
+            registry_path = "/kaggle/working/experiments.csv"
+        else:
+            registry_path = os.path.join(current_dir, "experiments.csv")
         file_exists = os.path.isfile(registry_path)
         
         row = {

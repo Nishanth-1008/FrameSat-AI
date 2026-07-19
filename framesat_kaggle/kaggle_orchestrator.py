@@ -179,10 +179,9 @@ class KaggleOrchestrator:
         print(" FrameSat-AI Orchestrator: Manifest & Config")
         print("=================================================")
 
-        # Load baseline config
         config_template_path = os.path.join(self.bundle_path, "training", "configs", "train_rife426.json")
         if not os.path.exists(config_template_path):
-            config_template_path = os.path.join(self.bundle_path, "kaggle", "train_kaggle.json")
+            config_template_path = os.path.join(self.bundle_path, "framesat_kaggle", "train_kaggle.json")
 
         with open(config_template_path, "r") as f:
             config = json.load(f)
@@ -208,7 +207,7 @@ class KaggleOrchestrator:
         resume_checkpoint = None
         runs_dir = os.path.join(output_base_dir, "runs")
         if os.path.exists(runs_dir):
-            all_runs = sorted(glob.glob(os.path.join(runs_dir, "run_*")))
+            all_runs = sorted(glob.glob(os.path.join(runs_dir, "Experiment_*")))
             if all_runs:
                 latest_run = all_runs[-1]
                 latest_pth = os.path.join(latest_run, "latest.pth")
@@ -285,14 +284,29 @@ class KaggleOrchestrator:
         print(f"\033[34mℹ\033[0m Executing pipeline script: \033[1;36m{train_script}\033[0m")
         print(f"\033[34mℹ\033[0m Target device: \033[1;36m{self.device}\033[0m")
 
-        if self.bundle_path not in sys.path:
-            sys.path.insert(0, self.bundle_path)
-
-        cmd = [sys.executable, train_script, "--config", self.resolved_config_path]
+        device_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+        if device_count > 1:
+            import random
+            port = random.randint(29000, 29999)
+            print(f"\033[32m✔\033[0m Multi-GPU detected ({device_count} GPUs). Launching via torch.distributed.run (DDP) on port {port}...")
+            cmd = [
+                sys.executable, "-m", "torch.distributed.run", 
+                f"--nproc_per_node={device_count}", 
+                f"--master_port={port}",
+                train_script, 
+                "--config", self.resolved_config_path
+            ]
+        else:
+            cmd = [sys.executable, train_script, "--config", self.resolved_config_path]
 
         # Make the resolved device explicit to the subprocess environment too,
         # in case train.py falls back to env vars instead of the config file.
         env = os.environ.copy()
+        env["USE_LIBUV"] = "0"
+        env["PYTHONPATH"] = self.bundle_path + os.pathsep + env.get("PYTHONPATH", "")
+        env["NCCL_SOCKET_IFNAME"] = "lo"
+        env["MASTER_ADDR"] = "127.0.0.1"
+        env["PYTHONUNBUFFERED"] = "1"
         if self.device == "cpu":
             # Force-hide GPUs from the subprocess if we ever allow a CPU run,
             # so behavior is consistent with what was validated/logged.
@@ -319,11 +333,29 @@ class KaggleOrchestrator:
     def evaluate(self):
         self._print_header("FrameSat-AI Orchestrator: Post-Training Evaluation")
 
-        # Locate the run results
-        runs_dir = "/kaggle/working/outputs/runs"
-        all_runs = sorted(glob.glob(os.path.join(runs_dir, "run_*")))
+        # Load config to find the exact runs directory
+        with open(self.resolved_config_path, "r") as f:
+            config = json.load(f)
+            
+        output_base_dir = config.get("output_dir", "/kaggle/working/outputs")
+        runs_dir = os.path.join(output_base_dir, "runs")
+
+        # Diagnostic logging
+        print(f"\033[34mℹ\033[0m Expected runs directory: {runs_dir}")
+        print(f"\033[34mℹ\033[0m Exists: {os.path.exists(runs_dir)}")
+        
+        if not os.path.exists(runs_dir):
+            print("\033[33m⚠\033[0m Runs directory does not exist.")
+            if os.path.exists(output_base_dir):
+                print(f"    Available sibling directories in {output_base_dir}: {os.listdir(output_base_dir)}")
+            print("Skipping evaluation.")
+            return
+
+        all_runs = sorted(glob.glob(os.path.join(runs_dir, "Experiment_*")))
         if not all_runs:
-            print("\033[33m⚠\033[0m No runs folder found under outputs. Skipping evaluation.")
+            print(f"\033[33m⚠\033[0m No 'Experiment_*' folders found in {runs_dir}.")
+            print(f"    Contents of {runs_dir}: {os.listdir(runs_dir)}")
+            print("Skipping evaluation.")
             return
 
         latest_run = all_runs[-1]
@@ -433,9 +465,14 @@ evaluator.run()
         export_root = "/kaggle/working/experiment_001"
         os.makedirs(export_root, exist_ok=True)
 
+        with open(self.resolved_config_path, "r") as f:
+            config = json.load(f)
+            
+        output_base_dir = config.get("output_dir", "/kaggle/working/outputs")
+        runs_dir = os.path.join(output_base_dir, "runs")
+
         # Find runs
-        runs_dir = "/kaggle/working/outputs/runs"
-        all_runs = sorted(glob.glob(os.path.join(runs_dir, "run_*")))
+        all_runs = sorted(glob.glob(os.path.join(runs_dir, "Experiment_*")))
 
         latest_run = None
         if all_runs:
