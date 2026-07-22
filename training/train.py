@@ -35,9 +35,11 @@ def main():
     parser.add_argument("--config", type=str, default="configs/train_rife426.json", help="Path to training config")
     args = parser.parse_args()
     
-    config_path = os.path.join(current_dir, args.config)
+    config_path = args.config if os.path.isabs(args.config) else os.path.join(current_dir, args.config)
+    print(f"train.py loading configuration from: {config_path}")
     with open(config_path, 'r') as f:
         config = json.load(f)
+    print(f"Loaded config parameters: epochs={config.get('epochs')}, batch_size={config.get('batch_size')}, lr={config.get('learning_rate')}, optimizer={config.get('optimizer')}")
         
     is_distributed = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     if is_distributed:

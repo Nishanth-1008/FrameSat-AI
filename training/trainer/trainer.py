@@ -141,16 +141,29 @@ class Trainer:
 
         
         self.criterion = CombinedLoss(alpha=self.alpha)
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=1e-4)
-        
-        if self.lr_scheduler_type == "cosine":
+        # Resolve optimizer and weight decay from config overrides
+        opt_name = self.config.get("optimizer", "AdamW")
+        wd = self.config.get("weight_decay", 1e-4)
+        if opt_name == "AdamW":
+            self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=wd)
+        elif opt_name == "Adam":
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=wd)
+        elif opt_name == "SGD":
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr, weight_decay=wd, momentum=0.9)
+        else:
+            print(f"Warning: Unknown optimizer '{opt_name}'. Defaulting to AdamW.")
+            self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=wd)
+            
+        # Resolve learning rate scheduler from config overrides
+        scheduler_name = str(self.config.get("lr_scheduler", "cosine")).lower()
+        if scheduler_name in ["cosine", "cosineannealinglr"]:
             self.scheduler = CosineAnnealingLR(self.optimizer, T_max=self.epochs)
-        elif self.lr_scheduler_type == "reduce_on_plateau":
+        elif scheduler_name in ["reduce_on_plateau", "reduceonplateau"]:
             self.scheduler = ReduceLROnPlateau(self.optimizer, mode='max', patience=3, factor=0.5)
         else:
             self.scheduler = None
         
-        self.use_amp = (self.device.type == "cuda") and config.get("use_amp", True)
+        self.use_amp = (self.device.type == "cuda") and self.config.get("use_amp", True)
         self.scaler = GradScaler("cuda", enabled=self.use_amp)
         
         self.start_epoch = 0
@@ -447,7 +460,7 @@ class Trainer:
             self.optimizer.load_state_dict(state['optimizer'])
             self.start_epoch = state['epoch'] + 1
             self.best_psnr = state['best_psnr']
-            print(f"Resumed from {target_path} at epoch {state['epoch']}")
+            print(f"Resumed weights & optimizer from {target_path} at epoch {state['epoch']}. Target epochs remain: {self.epochs} (running epochs {self.start_epoch} to {self.epochs-1}).")
         else:
             if self.config.get("resume", False):
                 print(f"Warning: Could not find checkpoint at {target_path} to resume from.")

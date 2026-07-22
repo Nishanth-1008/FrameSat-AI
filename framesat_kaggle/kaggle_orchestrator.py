@@ -9,6 +9,26 @@ import torch
 import platform
 import tarfile
 
+# Standard Experiment Presets
+FAST_DEBUG = {
+    "epochs": 2,
+    "batch_size": 2,
+    "train_resize": [256, 256]
+}
+
+FULL_TRAINING = {
+    "epochs": 100,
+    "batch_size": 8,
+    "train_resize": [512, 512]
+}
+
+PAPER_RESULTS = {
+    "epochs": 150,
+    "batch_size": 8,
+    "train_resize": [512, 512],
+    "save_predictions": True
+}
+
 class KaggleOrchestrator:
     def _print_header(self, title):
         CYAN = "\033[36m"
@@ -18,11 +38,17 @@ class KaggleOrchestrator:
         padding = (width - len(title) - 2) // 2
         p_left = " " * padding
         p_right = " " * (width - len(title) - 2 - padding)
-        print(f"\n{CYAN}┌{'─' * (width - 2)}┐{RESET}")
-        print(f"{CYAN}│{BOLD}{p_left}{title}{p_right}{CYAN}│{RESET}")
-        print(f"{CYAN}└{'─' * (width - 2)}┘{RESET}")
+        try:
+            print(f"\n{CYAN}┌{'─' * (width - 2)}┐{RESET}")
+            print(f"{CYAN}│{BOLD}{p_left}{title}{p_right}{CYAN}│{RESET}")
+            print(f"{CYAN}└{'─' * (width - 2)}┘{RESET}")
+        except UnicodeEncodeError:
+            print(f"\n{CYAN}+{'=' * (width - 2)}+{RESET}")
+            print(f"{CYAN}|{BOLD}{p_left}{title}{p_right}{CYAN}|{RESET}")
+            print(f"{CYAN}+{'=' * (width - 2)}+{RESET}")
 
-    def __init__(self):
+    def __init__(self, config_overrides=None):
+        self.config_overrides = config_overrides or {}
         self.bundle_path = None
         self.dataset_path = None
         self.cache_dir = None
@@ -173,10 +199,28 @@ class KaggleOrchestrator:
             raise RuntimeError("Environment verification failed. Aborting training run.")
         print("\033[32m✔\033[0m All pre-flight validations passed.")
 
-    def resolve_runtime_config(self):
-        print("\n=================================================")
-        print(" FrameSat-AI Orchestrator: Manifest & Config")
-        print("=================================================")
+    def resolve_runtime_config(self, overrides=None):
+        self._print_header("FrameSat-AI Orchestrator: Manifest & Config")
+
+        active_overrides = {}
+        if self.config_overrides:
+            active_overrides.update(self.config_overrides)
+        if overrides:
+            active_overrides.update(overrides)
+        if not active_overrides:
+            main_mod = sys.modules.get("__main__")
+            if main_mod and hasattr(main_mod, "CONFIG_OVERRIDES"):
+                notebook_overrides = getattr(main_mod, "CONFIG_OVERRIDES")
+                if isinstance(notebook_overrides, dict):
+                    active_overrides.update(notebook_overrides)
+
+        # Normalize alias overrides for backend compatibility
+        if "mixed_precision" in active_overrides:
+            active_overrides["use_amp"] = active_overrides["mixed_precision"]
+        if "scheduler" in active_overrides:
+            active_overrides["lr_scheduler"] = active_overrides["scheduler"]
+        if "num_eval_events" in active_overrides:
+            active_overrides["events"] = active_overrides["num_eval_events"]
 
         config_template_path = os.path.join(self.bundle_path, "training", "configs", "train_rife426.json")
         if not os.path.exists(config_template_path):
@@ -185,45 +229,69 @@ class KaggleOrchestrator:
         with open(config_template_path, "r") as f:
             config = json.load(f)
 
-        # Override fields
+        # Apply notebook overrides first over default template
+        if active_overrides:
+            config.update(active_overrides)
+            try:
+                print(f"\033[32m✔\033[0m Applied {len(active_overrides)} notebook configuration override(s):")
+            except UnicodeEncodeError:
+                print(f"[OK] Applied {len(active_overrides)} notebook configuration override(s):")
+            for k, v in active_overrides.items():
+                try:
+                    print(f"  └─ \033[36m{k:<20}\033[0m: {v}")
+                except UnicodeEncodeError:
+                    print(f"  |- \033[36m{k:<20}\033[0m: {v}")
+
+        # Managed infrastructure fields
         config["dataset_path"] = self.cache_dir
         config["quarantine_dir"] = os.path.join(os.path.dirname(self.cache_dir), "quarantine")
         config["pretrained_weights"] = self.weights_dir
 
-        # Explicitly propagate device choice to train.py — do not rely on
-        # train.py doing its own independent torch.cuda.is_available() check.
         config["device"] = self.device
         config["gpu_model"] = self.gpu_model
         config["cuda_version"] = self.cuda_version
         if torch.cuda.is_available():
             config["cudnn_benchmark"] = True
 
-        # Set absolute output folder
         output_base_dir = "/kaggle/working/outputs"
         config["output_dir"] = output_base_dir
 
-        # Check auto-resume capabilities
-        resume_checkpoint = None
-        runs_dir = os.path.join(output_base_dir, "runs")
-        if os.path.exists(runs_dir):
-            all_runs = sorted(glob.glob(os.path.join(runs_dir, "Experiment_*")))
-            if all_runs:
-                latest_run = all_runs[-1]
-                latest_pth = os.path.join(latest_run, "latest.pth")
-                if os.path.exists(latest_pth):
-                    resume_checkpoint = latest_pth
+        # Auto-resume should only trigger if explicitly requested in config/overrides
+        user_wants_resume = active_overrides.get("resume", config.get("resume", False))
+        resume_checkpoint = ""
+        if user_wants_resume:
+            runs_dir = os.path.join(output_base_dir, "runs")
+            if os.path.exists(runs_dir):
+                all_runs = sorted(glob.glob(os.path.join(runs_dir, "Experiment_*")))
+                if all_runs:
+                    latest_run = all_runs[-1]
+                    latest_pth = os.path.join(latest_run, "latest.pth")
+                    if os.path.exists(latest_pth):
+                        resume_checkpoint = latest_pth
 
-        if resume_checkpoint:
-            print(f"\033[34mℹ\033[0m Auto-Resume detected! Resuming from: \033[32m{resume_checkpoint}\033[0m")
-            config["resume"] = True
-            config["resume_checkpoint"] = resume_checkpoint
+            if resume_checkpoint:
+                print(f"\033[34mℹ\033[0m Resume requested! Resuming from: \033[32m{resume_checkpoint}\033[0m")
+                config["resume"] = True
+                config["resume_checkpoint"] = resume_checkpoint
+            else:
+                print(f"\033[33m⚠\033[0m Resume requested but no previous checkpoint was found. Starting fresh run.")
+                config["resume"] = False
+                config["resume_checkpoint"] = ""
         else:
             config["resume"] = False
             config["resume_checkpoint"] = ""
 
+        # Assert zero divergence between active_overrides and config
+        for k, v in active_overrides.items():
+            if config.get(k) != v:
+                raise RuntimeError(f"Configuration mismatch error: Key '{k}' declared as '{v}' in notebook overrides but resolved to '{config.get(k)}' in final config!")
+
         # Write training configuration
         with open(self.resolved_config_path, "w") as f:
             json.dump(config, f, indent=4)
+
+        print("\nResolved Runtime Configuration (train_config_resolved.json):")
+        print(json.dumps(config, indent=4))
 
         # Create manifest metadata
         manifest = {
@@ -250,29 +318,20 @@ class KaggleOrchestrator:
         RESET = "\033[0m"
         CYAN = "\033[36m"
 
-        print(f"\n{CYAN}┌──────────────────────┬────────────────────────────────────────────────────────┐{RESET}")
-        print(f"{CYAN}│{BOLD} Key                  {RESET}{CYAN}│{BOLD} Value                                                  {RESET}{CYAN}│{RESET}")
-        print(f"{CYAN}├──────────────────────┼────────────────────────────────────────────────────────┤{RESET}")
+        try:
+            print(f"\n{CYAN}┌──────────────────────┬────────────────────────────────────────────────────────┐{RESET}")
+            print(f"{CYAN}│{BOLD} Key                  {RESET}{CYAN}│{BOLD} Value                                                  {RESET}{CYAN}│{RESET}")
+            print(f"{CYAN}├──────────────────────┼────────────────────────────────────────────────────────┤{RESET}")
 
-        manifest_items = [
-            ("GPU", self.gpu_model),
-            ("Device", self.device),
-            ("PyTorch", self.pytorch_version),
-            ("CUDA", self.cuda_version),
-            ("Project Path", self.bundle_path),
-            ("Dataset Path", self.cache_dir),
-            ("Metadata Path", self.metadata_db),
-            ("Pretrained Weights", self.weights_dir),
-            ("Output Path", output_base_dir)
-        ]
+            for key, val in manifest_items:
+                val_str = str(val)
+                if len(val_str) > 54:
+                    val_str = val_str[:51] + "..."
+                print(f"{CYAN}│{RESET} {key:<20} {CYAN}│{RESET} {val_str:<54} {CYAN}│{RESET}")
 
-        for key, val in manifest_items:
-            val_str = str(val)
-            if len(val_str) > 54:
-                val_str = val_str[:51] + "..."
-            print(f"{CYAN}│{RESET} {key:<20} {CYAN}│{RESET} {val_str:<54} {CYAN}│{RESET}")
-
-        print(f"{CYAN}└──────────────────────┴────────────────────────────────────────────────────────┘{RESET}\n")
+            print(f"{CYAN}└──────────────────────┴────────────────────────────────────────────────────────┘{RESET}\n")
+        except UnicodeEncodeError:
+            print(f"\nManifest: GPU={self.gpu_model}, Device={self.device}, PyTorch={self.pytorch_version}, Output={output_base_dir}\n")
 
         return config
 
@@ -354,8 +413,8 @@ class KaggleOrchestrator:
             "experiment_name": "eval_kaggle_finetune",
             "dataset_path": self.cache_dir,
             "checkpoint_path": best_checkpoint,
-            "events": 10,
-            "save_predictions": True,
+            "events": config.get("events", 10),
+            "save_predictions": config.get("save_predictions", True),
             "device": self.device
         }
 
@@ -458,14 +517,19 @@ evaluator.run()
     def package_outputs(self):
         self._print_header("FrameSat-AI Orchestrator: Exporting Artifacts")
 
-        export_root = "/kaggle/working/experiment_001"
-        os.makedirs(export_root, exist_ok=True)
-
         with open(self.resolved_config_path, "r") as f:
             config = json.load(f)
             
         best_checkpoint = config.get("returned_checkpoint", "")
         latest_run = os.path.dirname(best_checkpoint) if best_checkpoint else None
+
+        # Derive experiment ID dynamically from the actual run directory
+        experiment_id = "experiment_001"
+        if latest_run:
+            experiment_id = os.path.basename(latest_run).lower()
+
+        export_root = f"/kaggle/working/{experiment_id}"
+        os.makedirs(export_root, exist_ok=True)
 
         # Copy configs
         if os.path.exists(self.resolved_config_path):
@@ -516,10 +580,10 @@ evaluator.run()
             shutil.copytree(os.path.join(latest_run, "sample_predictions"), pred_dir, dirs_exist_ok=True)
 
         # Create tar file
-        tar_path = "/kaggle/working/experiment_001.tar.gz"
+        tar_path = f"/kaggle/working/{experiment_id}.tar.gz"
         print(f"\033[34mℹ\033[0m Compressing export directory into: \033[36m{tar_path}\033[0m")
         with tarfile.open(tar_path, "w:gz") as tar:
-            tar.add(export_root, arcname="experiment_001")
+            tar.add(export_root, arcname=experiment_id)
 
         print(f"\033[32m✔\033[0m Pack complete. Tar file created: \033[32m{tar_path}\033[0m")
 
@@ -577,3 +641,16 @@ evaluator.run()
             print(f"{GREEN}│{RESET} {key:<20} {GREEN}│{RESET} {val_str:<54} {GREEN}│{RESET}")
 
         print(f"{GREEN}└──────────────────────┴────────────────────────────────────────────────────────┘{RESET}\n")
+
+    def run(self, overrides=None):
+        """
+        Executes the entire end-to-end experiment pipeline:
+        setup, discovery, validation, config resolution, training, evaluation, and packaging.
+        """
+        self.setup_environment()
+        self.discover_resources()
+        self.validate_environment()
+        self.resolve_runtime_config(overrides=overrides)
+        self.launch_training()
+        self.evaluate()
+        self.package_outputs()
