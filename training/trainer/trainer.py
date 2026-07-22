@@ -701,10 +701,12 @@ This report compares the performance of the baseline Practical-RIFE 4.26 model (
             with open(os.path.join(self.output_dir, "baseline_vs_finetuned.md"), "w", encoding="utf-8") as f:
                 f.write(md_content)
             root_md_path = os.path.abspath(os.path.join(current_dir, "..", "baseline_vs_finetuned.md"))
-            with open(root_md_path, "w", encoding="utf-8") as f:
-                f.write(md_content)
-                
-            print(f"Generated comparison report at {root_md_path}")
+            try:
+                with open(root_md_path, "w", encoding="utf-8") as f:
+                    f.write(md_content)
+                print(f"Generated comparison report at {root_md_path}")
+            except (OSError, IOError) as e:
+                print(f"Warning: Could not write comparison report to root repository path ({e}). It has still been saved to {self.output_dir}")
             
         except Exception as e:
             print(f"Error during final evaluation: {e}")

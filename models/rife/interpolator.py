@@ -71,11 +71,19 @@ class RIFEInterpolator(BaseInterpolator):
         t2_tensor = torch.from_numpy(t2).float().unsqueeze(0).unsqueeze(0).to(self.device)
         t2_tensor = torch.cat([t2_tensor, t2_tensor, t2_tensor], dim=1)
         
-        # 2. Pad to multiple of 32 (required by RIFE)
-        tmp = max(32, int(32 * np.ceil(h / 32.0)))
-        pad_h = tmp - h
-        tmp = max(32, int(32 * np.ceil(w / 32.0)))
-        pad_w = tmp - w
+        # 2. Pad to multiple of 128.
+        #
+        # RIFE's IFNet uses scale_list=[16, 8, 4, 2, 1] and IFBlock.conv0 applies
+        # two stride-2 convolutions internally (effective spatial factor of ×4).
+        # The maximum downscale encountered before integer convolutions is 16×4=64.
+        # To avoid fractional truncation that causes feat/warped_img shape mismatches
+        # in the torch.cat inside IFNet.forward(), every spatial dimension must be
+        # divisible by 64. We use 128 (= 2×64) as a conservative safe value.
+        PAD_MULTIPLE = 128
+        ph = int(PAD_MULTIPLE * np.ceil(h / PAD_MULTIPLE))
+        pw = int(PAD_MULTIPLE * np.ceil(w / PAD_MULTIPLE))
+        pad_h = ph - h
+        pad_w = pw - w
         
         if pad_h > 0 or pad_w > 0:
             t0_tensor = torch.nn.functional.pad(t0_tensor, (0, pad_w, 0, pad_h))

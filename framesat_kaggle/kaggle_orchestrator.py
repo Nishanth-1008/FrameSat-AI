@@ -363,12 +363,19 @@ class KaggleOrchestrator:
         with open(eval_config_path, "w") as f:
             json.dump(eval_config, f, indent=4)
 
-        # Parse template end dates
+        # Parse template end dates and training resolution/channel
         with open(self.resolved_config_path, "r") as f:
             config = json.load(f)
 
         start_date = config.get("start_date", "2024-10-10T21:00:00")
         end_date = config.get("end_date", "2024-10-14T09:00:00")
+
+        # Read training resolution so evaluation uses the same spatial scale the model was trained on.
+        # Mismatched resolution causes a severe distribution shift and near-zero predictions.
+        raw_train_resize = config.get("train_resize", [384, 384])
+        eval_train_resize = tuple(raw_train_resize) if isinstance(raw_train_resize, list) else raw_train_resize
+        eval_channel = config.get("channel", 13)
+        print(f"\033[34mℹ\033[0m Evaluation will use train_resize={eval_train_resize}, channel={eval_channel} (matched to training config)")
 
         # Run the evaluator programmatically via inline script
         eval_script = f"""
@@ -421,10 +428,14 @@ if device == 'cuda' and hasattr(model, 'parameters'):
     except StopIteration:
         pass
 
+# Use the same channel and train_resize as training to avoid resolution mismatch
+# (a model trained at 384x384 fed full-res ~3000x3000 images produces near-zero predictions)
 raw_dataset = GOES19TripletDataset(
     start_date=datetime.fromisoformat('{start_date}'),
     end_date=datetime.fromisoformat('{end_date}'),
     cache_dir='{self.cache_dir}',
+    channel={eval_channel},
+    train_resize={eval_train_resize},
     split='val'
 )
 dataset = GOES19EvaluationDatasetWrapper(raw_dataset)
