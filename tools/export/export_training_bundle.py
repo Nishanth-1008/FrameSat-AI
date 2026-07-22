@@ -39,6 +39,10 @@ def create_bundle():
     print("Copying framesat_kaggle/ setup scripts...")
     shutil.copytree(os.path.join(project_root, "framesat_kaggle"), os.path.join(bundle_name, "framesat_kaggle"))
     
+    print("Copying shared/ package...")
+    shutil.copytree(os.path.join(project_root, "shared"), os.path.join(bundle_name, "shared"),
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    
     print(f"Zipping {bundle_name} to {zip_name}...")
     shutil.make_archive(os.path.join(project_root, "kaggle_bundle"), 'zip', bundle_name)
     

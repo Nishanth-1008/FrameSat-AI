@@ -2,7 +2,7 @@ import sys
 import os
 import torch
 import numpy as np
-from .base import BaseInterpolator
+from models.base import BaseInterpolator
 
 class RIFEInterpolator(BaseInterpolator):
     """
@@ -26,42 +26,38 @@ class RIFEInterpolator(BaseInterpolator):
                 self.model.flownet.to(self.device)
         return self
 
-    def load_weights(self, path: str):
+    def load_checkpoint(self, path: str):
         """
-        Load weights from the provided directory (expects 'flownet.pkl').
-        Supports loading dynamic model architecture from the directory if present.
+        Load a single checkpoint file natively.
+        Supports both raw state_dicts and wrapped Trainer state dicts.
         """
-        # 1. Unload modules to avoid cache conflicts
-        for mod in list(sys.modules.keys()):
-            if mod.startswith("RIFE_HDv3") or mod.startswith("train_log") or mod.startswith("model.warplayer") or mod.startswith("model.loss"):
-                del sys.modules[mod]
+        from shared.checkpoint import load_checkpoint
+        state_dict, _ = load_checkpoint(path, str(self.device))
+        
+        # Format keys for RIFE flownet
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith('module.'):
+                new_state_dict[k.replace('module.', '')] = v
+            else:
+                new_state_dict[k] = v
 
-        train_log_dir = os.path.abspath(path)
-        version_dir = os.path.dirname(train_log_dir)
-        
-        # 2. Add paths to sys.path
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        rife_src_dir = os.path.join(current_dir, "rife_src")
-        
-        sys.path.insert(0, rife_src_dir)
-        sys.path.insert(0, train_log_dir)
-        sys.path.insert(0, version_dir)
-        
-        try:
-            from RIFE_HDv3 import Model
-            self.model = Model()
-            self.model.load_model(train_log_dir)
-            self.model.eval()
-        finally:
-            # Restore sys.path
-            if version_dir in sys.path:
-                sys.path.remove(version_dir)
-            if train_log_dir in sys.path:
-                sys.path.remove(train_log_dir)
-            if rife_src_dir in sys.path:
-                sys.path.remove(rife_src_dir)
-
-        
+        if self.model is None:
+            # We import Model directly from our local src directory
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            rife_src_dir = os.path.join(current_dir, "src")
+            sys.path.insert(0, rife_src_dir)
+            try:
+                from RIFE_HDv3 import Model
+                self.model = Model()
+                self.model.flownet.load_state_dict(new_state_dict, strict=False)
+                self.model.eval()
+            finally:
+                if rife_src_dir in sys.path:
+                    sys.path.remove(rife_src_dir)
+        else:
+            self.model.flownet.load_state_dict(new_state_dict, strict=False)
+            self.model.eval()        
     def interpolate(self, t0: np.ndarray, t2: np.ndarray) -> np.ndarray:
         """
         Run inference using the RIFE model.

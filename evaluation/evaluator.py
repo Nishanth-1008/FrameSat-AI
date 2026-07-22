@@ -4,12 +4,20 @@ import json
 import csv
 from datetime import datetime
 import numpy as np
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 from .datasets import SatelliteDataset
 from .metrics import compute_psnr, compute_ssim, compute_mae, compute_mse, compute_fsim
-from .visualizer import save_comparison_figure
 from .preprocessing import get_preprocessor_from_config
+
+# Make visualization libraries and utilities optional
+try:
+    import matplotlib.pyplot as plt
+    from .visualization.visualizer import save_comparison_figure
+    HAS_VISUALIZATION = True
+except ImportError:
+    plt = None
+    save_comparison_figure = None
+    HAS_VISUALIZATION = False
 
 class Evaluator:
     """
@@ -22,6 +30,7 @@ class Evaluator:
         self.model = model
         self.dataset = dataset
         self.config = config
+        self.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         self.experiment_name = config.get("experiment_name", "experiment")
         self.save_predictions = config.get("save_predictions", False)
@@ -30,11 +39,20 @@ class Evaluator:
         # Setup preprocessor
         self.preprocessor = get_preprocessor_from_config(config)
         
-        # Setup output folders
-        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.run_dir = os.path.join(
-            "evaluation", "experiments", f"run_{self.timestamp}_{self.experiment_name}"
-        )
+        # Identify the experiment ID from the checkpoint path
+        self.checkpoint_path = config.get("checkpoint_path", "")
+        
+        experiment_id = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.experiment_name}"
+        if self.checkpoint_path:
+            # Parse artifacts/training/runs/Experiment_XXX/latest.pth
+            parts = self.checkpoint_path.split(os.sep)
+            for part in parts:
+                if part.startswith("Experiment_"):
+                    experiment_id = part
+                    break
+        
+        # Setup output folders mirroring training
+        self.run_dir = os.path.join("artifacts", "evaluation", experiment_id)
         
         self.visual_dir = os.path.join(self.run_dir, "visualizations")
         self.pred_dir = os.path.join(self.run_dir, "predictions")
@@ -109,15 +127,20 @@ class Evaluator:
             results.append(event_result)
             
             # 5. Save visualizations
-            out_path = os.path.join(self.visual_dir, f"event_{idx}_vis.png")
-            title = f"Event {idx} ({self.dataset.modality.upper()}) | PSNR: {psnr:.2f} | SSIM: {ssim:.4f}"
-            save_comparison_figure(t0_proc, gt_proc, pred_proc, out_path, title)
-            
-            # Save individual component images as requested
-            plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_gt.png"), gt_proc, cmap='gray')
-            plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_pred.png"), pred_proc, cmap='gray')
-            diff = np.abs(gt_proc - pred_proc)
-            plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_diff.png"), diff, cmap='hot', vmin=0.0, vmax=0.2)
+            if HAS_VISUALIZATION and save_comparison_figure is not None:
+                try:
+                    out_path = os.path.join(self.visual_dir, f"event_{idx}_vis.png")
+                    title = f"Event {idx} ({self.dataset.modality.upper()}) | PSNR: {psnr:.2f} | SSIM: {ssim:.4f}"
+                    save_comparison_figure(t0_proc, gt_proc, pred_proc, out_path, title)
+                    
+                    # Save individual component images as requested
+                    plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_gt.png"), gt_proc, cmap='gray')
+                    plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_pred.png"), pred_proc, cmap='gray')
+                    diff = np.abs(gt_proc - pred_proc)
+                    plt.imsave(os.path.join(self.visual_dir, f"event_{idx}_diff.png"), diff, cmap='hot', vmin=0.0, vmax=0.2)
+                except Exception as e:
+                    log_info(f"  Warning: Failed to save visualizations for event {idx}: {e}")
+
             eval_pbar.set_postfix({
                 "PSNR": f"{psnr:.2f}dB",
                 "SSIM": f"{ssim:.4f}"
@@ -166,6 +189,7 @@ class Evaluator:
             
         # Append to main CSV
         csv_path = os.path.join("evaluation", "experiments", "experiments_summary.csv")
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
         file_exists = os.path.isfile(csv_path)
         with open(csv_path, 'a', newline='') as f:
             writer = csv.writer(f)

@@ -281,6 +281,11 @@ def main():
     trainer = Trainer(config, train_loader, val_loader, train_sampler=train_sampler)
     trainer.train()
     
+    if config.get("rank", 0) == 0:
+        config["returned_checkpoint"] = os.path.join(trainer.output_dir, "best.pth")
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=4)
+    
     if config.get("is_distributed", False):
         dist.destroy_process_group()
 

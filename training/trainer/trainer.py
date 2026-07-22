@@ -585,30 +585,10 @@ class Trainer:
             print("Error: No checkpoints found for final evaluation!")
             return
             
-        temp_dir = os.path.join(self.output_dir, "temp_eval_weights")
-        os.makedirs(temp_dir, exist_ok=True)
-        
         try:
-            # Source .py model files from the same pretrained_weights directory used for training.
-            # This is already an absolute path — no joining required.
-            src_weights_dir = os.path.abspath(self.config.get("pretrained_weights", ""))
-
-            import shutil
-            if os.path.exists(src_weights_dir):
-                for item in os.listdir(src_weights_dir):
-                    if item.endswith(".py"):
-                        shutil.copy(os.path.join(src_weights_dir, item), os.path.join(temp_dir, item))
-            else:
-                print(f"Warning: Pretrained weights source directory not found at {src_weights_dir}")
-                
-            checkpoint = torch.load(best_path, map_location='cpu')
-            state_dict = checkpoint['state_dict']
-            clean_state = {k.replace("module.", ""): v for k, v in state_dict.items()}
-            torch.save(clean_state, os.path.join(temp_dir, "flownet.pkl"))
-            
             from models.rife.interpolator import RIFEInterpolator
             model = RIFEInterpolator()
-            model.load_weights(temp_dir)
+            model.load_checkpoint(best_path)
             
             from datasets.providers.goes19.goes19_builder import GOES19TripletDataset
             start_date = datetime.datetime(2024, 10, 10, 21, 0, 0)
@@ -730,9 +710,6 @@ This report compares the performance of the baseline Practical-RIFE 4.26 model (
             print(f"Error during final evaluation: {e}")
             import traceback
             traceback.print_exc()
-        finally:
-            import shutil
-            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _generate_readme(self):
         readme_content = f"""# Experiment {self.run_id} — Practical-RIFE 4.26 Fine-tuning

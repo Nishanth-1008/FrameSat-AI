@@ -150,8 +150,7 @@ class KaggleOrchestrator:
 
         # 3. Weights directory verification
         required_files = [
-            "flownet.pkl", "IFNet_HDv3.py", "RIFE_HDv3.py",
-            "refine.py"
+            "flownet.pkl"
         ]
         print(f"Verifying weights directory: {self.weights_dir}")
         for file in required_files:
@@ -333,34 +332,18 @@ class KaggleOrchestrator:
     def evaluate(self):
         self._print_header("FrameSat-AI Orchestrator: Post-Training Evaluation")
 
-        # Load config to find the exact runs directory
+        # Load config to find the returned checkpoint path
         with open(self.resolved_config_path, "r") as f:
             config = json.load(f)
             
-        output_base_dir = config.get("output_dir", "/kaggle/working/outputs")
-        runs_dir = os.path.join(output_base_dir, "runs")
-
-        # Diagnostic logging
-        print(f"\033[34mℹ\033[0m Expected runs directory: {runs_dir}")
-        print(f"\033[34mℹ\033[0m Exists: {os.path.exists(runs_dir)}")
+        best_checkpoint = config.get("returned_checkpoint", "")
         
-        if not os.path.exists(runs_dir):
-            print("\033[33m⚠\033[0m Runs directory does not exist.")
-            if os.path.exists(output_base_dir):
-                print(f"    Available sibling directories in {output_base_dir}: {os.listdir(output_base_dir)}")
-            print("Skipping evaluation.")
-            return
-
-        all_runs = sorted(glob.glob(os.path.join(runs_dir, "Experiment_*")))
-        if not all_runs:
-            print(f"\033[33m⚠\033[0m No 'Experiment_*' folders found in {runs_dir}.")
-            print(f"    Contents of {runs_dir}: {os.listdir(runs_dir)}")
-            print("Skipping evaluation.")
-            return
-
-        latest_run = all_runs[-1]
-        best_checkpoint = os.path.join(latest_run, "best.pth")
-        if not os.path.exists(best_checkpoint):
+        # Diagnostic logging
+        print(f"\033[34mℹ\033[0m Training run directory: {os.path.dirname(best_checkpoint) if best_checkpoint else 'N/A'}")
+        print(f"\033[34mℹ\033[0m Resolved best_checkpoint: {best_checkpoint}")
+        print(f"\033[34mℹ\033[0m Exists: {os.path.exists(best_checkpoint)}")
+        
+        if not best_checkpoint or not os.path.exists(best_checkpoint):
             print(f"\033[33m⚠\033[0m No best checkpoint found at {best_checkpoint}. Skipping evaluation.")
             return
 
@@ -370,7 +353,7 @@ class KaggleOrchestrator:
         eval_config = {
             "experiment_name": "eval_kaggle_finetune",
             "dataset_path": self.cache_dir,
-            "weights": best_checkpoint,
+            "checkpoint_path": best_checkpoint,
             "events": 10,
             "save_predictions": True,
             "device": self.device
@@ -419,7 +402,7 @@ if device == 'cuda' and not torch.cuda.is_available():
 
 print(f'Loading RIFE Model onto device: {{device}}...')
 model = RIFEInterpolator()
-model.load_weights('{latest_run}')
+model.load_checkpoint('{best_checkpoint}')
 
 # Move model to the resolved device explicitly rather than assuming
 # RIFEInterpolator defaults to GPU internally.
@@ -456,7 +439,9 @@ evaluator.run()
         with open(eval_run_path, "w") as f:
             f.write(eval_script)
 
-        subprocess.check_call([sys.executable, eval_run_path])
+        env = os.environ.copy()
+        env["PYTHONPATH"] = self.bundle_path + os.pathsep + env.get("PYTHONPATH", "")
+        subprocess.check_call([sys.executable, eval_run_path], env=env)
         print("\033[32m✔\033[0m Scientific evaluation complete.")
 
     def package_outputs(self):
@@ -468,15 +453,8 @@ evaluator.run()
         with open(self.resolved_config_path, "r") as f:
             config = json.load(f)
             
-        output_base_dir = config.get("output_dir", "/kaggle/working/outputs")
-        runs_dir = os.path.join(output_base_dir, "runs")
-
-        # Find runs
-        all_runs = sorted(glob.glob(os.path.join(runs_dir, "Experiment_*")))
-
-        latest_run = None
-        if all_runs:
-            latest_run = all_runs[-1]
+        best_checkpoint = config.get("returned_checkpoint", "")
+        latest_run = os.path.dirname(best_checkpoint) if best_checkpoint else None
 
         # Copy configs
         if os.path.exists(self.resolved_config_path):
@@ -500,6 +478,14 @@ evaluator.run()
         os.makedirs(tb_dir, exist_ok=True)
         if latest_run and os.path.exists(os.path.join(latest_run, "tensorboard")):
             shutil.copytree(os.path.join(latest_run, "tensorboard"), tb_dir, dirs_exist_ok=True)
+            
+        # Copy evaluation outputs
+        if latest_run:
+            experiment_id = os.path.basename(latest_run)
+            eval_source_dir = os.path.join("artifacts", "evaluation", experiment_id)
+            if os.path.exists(eval_source_dir):
+                eval_export_dir = os.path.join(export_root, "evaluation", experiment_id)
+                shutil.copytree(eval_source_dir, eval_export_dir, dirs_exist_ok=True)
 
         # Copy evaluation
         eval_dir = os.path.join(export_root, "evaluation")
